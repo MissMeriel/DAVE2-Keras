@@ -18,15 +18,15 @@ from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_a
 
 # Fix error with Keras and TensorFlow
 import tensorflow as tf
-tf.python.control_flow_ops = tf
+#tf.python.control_flow_ops = tf
 
 
-sio = socketio.Server()
+#sio = socketio.Server()
 app = Flask(__name__)
 model = None
 prev_image_array = None
 
-@sio.on('telemetry')
+#@sio.on('telemetry')
 def telemetry(sid, data):
     # The current steering angle of the car
     steering_angle = data["steering_angle"]
@@ -56,7 +56,7 @@ def telemetry(sid, data):
     send_control(steering_angle, throttle)
 
 
-@sio.on('connect')
+#@sio.on('connect')
 def connect(sid, environ):
     print("connect ", sid)
     send_control(0, 0)
