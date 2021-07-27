@@ -4,23 +4,24 @@ import cv2
 import matplotlib.image as mpimg
 import json
 
+import tensorflow as tf
 #from keras.models import Sequential
 #from keras.layers import Conv2D, MaxPooling2D, Dense, Dropout
+from tensorflow.keras import Model
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Conv2D, Flatten, Dense, MaxPooling2D, Dropout
 from tensorflow.keras.layers import Activation, Flatten, Lambda, Input, ELU
 from keras.optimizers import Adam
 from keras.utils import np_utils
 from keras.preprocessing.image import ImageDataGenerator
-
-import tensorflow as tf
+from keras.layers import Conv2D, MaxPooling2D, Input, Dense, Flatten, concatenate
 
 import h5py
 import os
 from PIL import Image
 import PIL
 
-class Model:
+class DAVE2Model:
 
     def __init__(self):
         self.model = Sequential()
@@ -111,13 +112,199 @@ class Model:
         self.load_weights(h5_filename)
         return self.model
 
-
     # outputs vector [steering, throttle]
     def define_dual_model_BeamNG(self):
         # Start of MODEL Definition
         self.model = Sequential()
         # Input normalization layer
         self.model.add(Lambda(lambda x: x / 127.5 - 1., input_shape=self.input_shape, name='lambda_norm'))
+
+        # 5x5 Convolutional layers with stride of 2x2
+        self.model.add(Conv2D(24, 5, 2, name='conv1'))
+        self.model.add(ELU(name='elu1'))
+        self.model.add(Conv2D(36, 5, 2, name='conv2'))
+        self.model.add(ELU(name='elu2'))
+        self.model.add(Conv2D(48, 5, 2, name='conv3'))
+        self.model.add(ELU(name='elu3'))
+
+        # 3x3 Convolutional layers with stride of 1x1
+        self.model.add(Conv2D(64, 3, 1, name='conv4'))
+        self.model.add(ELU(name='elu4'))
+        self.model.add(Conv2D(64, 3, 1, name='conv5'))
+        self.model.add(ELU(name='elu5'))
+
+        # Flatten before passing to the fully connected layers
+        self.model.add(Flatten())
+        # Three fully connected layers
+        self.model.add(Dense(100, name='fc1'))
+        self.model.add(Dropout(.5, name='do1'))
+        self.model.add(ELU(name='elu6'))
+        self.model.add(Dense(50, name='fc2'))
+        self.model.add(Dropout(.5, name='do2'))
+        self.model.add(ELU(name='elu7'))
+        self.model.add(Dense(10, name='fc3'))
+        self.model.add(Dropout(.5, name='do3'))
+        self.model.add(ELU(name='elu8'))
+
+        # Output layer with tanh activation
+        self.model.add(Dense(2, activation='tanh', name='output'))
+
+        adam = Adam(lr=1e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+        self.model.compile(optimizer="adam", loss="mse")
+        # self.load_weights(h5_filename)
+        return self.model
+
+    def foo(self, ip):
+        # print(len(ip))
+        # a = ip[1]
+        # x = ip[0]
+        # b = ip[2]
+        # return a * x + b
+        return ip[0] / 127.5 - 1.
+
+    def define_multi_input_model_BeamNG(self, inputshape=(150, 200, 3)):
+        self.input_shape = inputshape
+        # define two sets of inputs
+        # inputA = Input(shape=(32,))
+        # inputB = Input(shape=(128,))
+        # x1 = tf.keras.layers.Dense(8)(np.arange(10).reshape(5, 2))
+        # x2 = tf.keras.layers.Dense(8)(np.arange(10, 20).reshape(5, 2))
+        # concatted = tf.keras.layers.Concatenate()([x1, x2])
+        # print(x1.shape)
+        # print(x2.shape)
+        # print(concatted.shape)
+        # exit(0)
+        # speed_input = Input(shape=(1), name='speed')
+        # image_input = Input(shape=(150, 200, 3), name='image')
+        # speed_input = Input(shape=(150, 200, 1), name='speed')
+        # image_input = Input(shape=(150, 200, 3), name='image')
+        # # the first branch operates on the first input
+        # x = Dense(8, activation="relu")(speed_input)
+        # x = Dense(8, activation="relu")(x)
+        # x = Model(inputs=speed_input, outputs=x)
+        # # the second branch opreates on the second input
+        # y = Dense(64, activation="relu")(image_input)
+        # y = Dense(32, activation="relu")(y)
+        # y = Dense(8, activation="relu")(y)
+        # y = Model(inputs=image_input, outputs=y)
+        # # combine the output of the two branches
+        # combined = tf.keras.layers.Concatenate(axis=3)([x.output, y.output]) # this works
+        # combined = concatenate(axis=3)([x.output, y.output])
+        # apply a FC layer and then a regression prediction on the
+        # combined outputs
+        # z = Dense(2, activation="relu")(combined)
+        # z = Dense(1, activation="linear")(z)
+        # model = Model(inputs=[x.input, y.input], outputs=z)
+        #
+        # # Start of DAVE2 model Definition
+        speed_input = Input(shape=(1,), name='speed')
+        image_input = Input(shape=(150, 200, 3), name='image')
+        # x = Dense(32, activation="relu", input_dim=(150, 200, 3))(image_input)
+        # x = Lambda(self.foo)(image_input)  # Important: You can give list of inputs to Lambda layer
+        x = Lambda(lambda x: x / 127.5 - 1., input_shape=self.input_shape, name='lambda_norm')(image_input)
+
+        # 5x5 Convolutional layers with stride of 2x2
+        x = Conv2D(24, 5, 2, name='conv1')(x)
+        x = ELU(name='elu1')(x)
+        x = Conv2D(36, 5, 2, name='conv2')(x)
+        x = ELU(name='elu2')(x)
+        x = Conv2D(48, 5, 2, name='conv3')(x)
+        x = ELU(name='elu3')(x)
+
+        # # 3x3 Convolutional layers with stride of 1x1
+        x = Conv2D(64, 3, 1, name='conv4')(x)
+        x = ELU(name='elu4')(x)
+        x = Conv2D(64, 3, 1, name='conv5')(x)
+        x = ELU(name='elu5')(x)
+
+        # Flatten before passing to the fully connected layers
+        x = Flatten()(x)
+
+        xspeed = Dense(8, activation="relu")(speed_input)
+        xspeed = Dense(8, activation="sigmoid")(xspeed)
+        combined = tf.keras.layers.Concatenate()([x, xspeed]) # this works
+        x = Dense(100, name='fc0')(combined)
+
+        # Three fully connected layers
+        x = Dense(100, name='fc1')(x)
+        x = Dropout(.5, name='do1')(x)
+        x = ELU(name='elu6')(x)
+        x = Dense(50, name='fc2')(x)
+        x = Dropout(.5, name='do2')(x)
+        x = ELU(name='elu7')(x)
+        x = Dense(10, name='fc3')(x)
+        x = Dropout(.5, name='do3')(x)
+        x = ELU(name='elu8')(x)
+
+        # Output layer with tanh activation
+        x = Dense(2, activation='tanh', name='output')(x)
+
+        adam = Adam(lr=1e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+        self.model = Model(inputs=[image_input, speed_input], outputs=x)
+        self.model.compile(optimizer="adam", loss="mse")
+        # self.load_weights(h5_filename)
+        self.model.summary()
+        return self.model
+
+    # outputs vector [steering, throttle]
+    def define_multi_input_model_BeamNG3(self, inputshape):
+        # Start of MODEL Definition
+        speed_input = Input(shape=(1,), name='speed')
+        image_input = Input(shape=(150, 200, 3), name='image')
+        x = Dense(32, activation="relu", input_dim=(150, 200, 3))(image_input)
+        x = Lambda(self.foo)([x, speed_input])  # Important: You can give list of inputs to Lambda layer
+
+        # 5x5 Convolutional layers with stride of 2x2
+        x = Conv2D(24, 5, 2, name='conv1')(x)
+        x = ELU(name='elu1')(x)
+        x = Conv2D(36, 5, 2, name='conv2')(x)
+        x = ELU(name='elu2')(x)
+        x = Conv2D(48, 5, 2, name='conv3')(x)
+        x = ELU(name='elu3')(x)
+
+        # # 3x3 Convolutional layers with stride of 1x1
+        # self.model.add(Conv2D(64, 3, 1, name='conv4'))
+        # self.model.add(ELU(name='elu4'))
+        # self.model.add(Conv2D(64, 3, 1, name='conv5'))
+        # self.model.add(ELU(name='elu5'))
+        #
+        # # Flatten before passing to the fully connected layers
+        # self.model.add(Flatten())
+        # # Three fully connected layers
+        # self.model.add(Dense(100, name='fc1'))
+        # self.model.add(Dropout(.5, name='do1'))
+        # self.model.add(ELU(name='elu6'))
+        # self.model.add(Dense(50, name='fc2'))
+        # self.model.add(Dropout(.5, name='do2'))
+        # self.model.add(ELU(name='elu7'))
+        # self.model.add(Dense(10, name='fc3'))
+        # self.model.add(Dropout(.5, name='do3'))
+        # self.model.add(ELU(name='elu8'))
+
+        # Output layer with tanh activation
+        x = Dense(2, activation='tanh', name='output')(x)
+
+        adam = Adam(lr=1e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+        self.model = Model(inputs=[image_input, speed_input], outputs=x)
+        self.model.compile(optimizer="adam", loss="mse")
+        # self.load_weights(h5_filename)
+        return self.model
+
+    # outputs vector [steering, throttle]
+    def define_multi_input_model_BeamNG2(self, inputshape):
+        # Start of MODEL Definition
+        self.model = Sequential()
+        # Input normalization layer
+        # self.input_shape = inputs
+        a = Input(shape=(1,), name='speed')
+        b = Input(shape=(1,), name='extra')
+        ip = Input(shape=(784,), name='image')
+        x = Dense(32, activation="relu", input_dim=784)(ip)
+        x = Lambda(self.foo)([x, a, b])  # Important: You can give list of inputs to Lambda layer
+        x = Dense(10, activation="softmax")(x)
+        model = Model(inputs=[ip, a, b], outputs=x)
+        self.model.add(x)
+        # self.model.add(Lambda(lambda x: x / 127.5 - 1., self.input_shape, name='lambda_norm'))
 
         # 5x5 Convolutional layers with stride of 2x2
         self.model.add(Conv2D(24, 5, 2, name='conv1'))
