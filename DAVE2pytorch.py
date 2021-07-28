@@ -81,8 +81,8 @@ class DAVE2PytorchModel(nn.Module):
         # use transpose instead of reshape -- reshape doesn't change representation in memory
         image = image.transpose((0,3,1,2))
         # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
-        if transform:
-            image = torch.from_numpy(image)/255.0 #transform(image)
+        # if transform:
+        image = torch.from_numpy(image)/255.0 #transform(image)
         return image #.permute(2, 1, 0)
 
 class DAVE2v2(nn.Module):
