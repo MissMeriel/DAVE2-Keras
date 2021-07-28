@@ -31,17 +31,26 @@ class DAVE2PytorchModel(nn.Module):
         super().__init__()
         self.input_shape = (150,200)
         self.conv1 = nn.Conv2d(3, 24, 5, stride=2)
+        torch.nn.init.xavier_uniform_(self.conv1.weight)
         self.conv2 = nn.Conv2d(24, 36, 5, stride=2)
+        torch.nn.init.xavier_uniform_(self.conv2.weight)
         self.conv3 = nn.Conv2d(36, 48, 5, stride=2)
+        torch.nn.init.xavier_uniform_(self.conv3.weight)
         self.conv4 = nn.Conv2d(48, 64, 3, stride=1)
+        torch.nn.init.xavier_uniform_(self.conv4.weight)
         self.conv5 = nn.Conv2d(64, 64, 3, stride=1)
+        torch.nn.init.xavier_uniform_(self.conv5.weight)
         self.dropout = nn.Dropout()
         # self.flatten = nn.Flatten()
         self.lin1 = nn.Linear(in_features=13824, out_features=100, bias=True)
+        torch.nn.init.xavier_uniform_(self.lin1.weight)
         self.lin2 = nn.Linear(in_features=100, out_features=50, bias=True)
+        torch.nn.init.xavier_uniform_(self.lin2.weight)
         self.lin3 = nn.Linear(in_features=50, out_features=10, bias=True)
+        torch.nn.init.xavier_uniform_(self.lin3.weight)
         # self.lin4 = nn.Linear(in_features=10, out_features=2, bias=True)
         self.lin4 = nn.Linear(in_features=10, out_features=1, bias=True)
+        torch.nn.init.xavier_uniform_(self.lin4.weight)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -81,8 +90,8 @@ class DAVE2PytorchModel(nn.Module):
         # use transpose instead of reshape -- reshape doesn't change representation in memory
         image = image.transpose((0,3,1,2))
         # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
-        # if transform:
-        image = torch.from_numpy(image)/255.0 #transform(image)
+        if transform:
+            image = transform(image) #torch.from_numpy(image)/255.0 #transform(image)
         return image #.permute(2, 1, 0)
 
 class DAVE2v2(nn.Module):

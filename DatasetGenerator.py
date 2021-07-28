@@ -467,6 +467,7 @@ class MultiDirectoryDataSequence(data.Dataset):
         """
         self.root = root
         self.transform = transform
+        print(self.transform)
         self.size = 0
         image_paths_hashmap = {}
         all_image_paths = []

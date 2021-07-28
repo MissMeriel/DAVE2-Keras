@@ -375,7 +375,7 @@ def main_pytorch_model():
     print(f"{device=}")
     model = model.to(device)
     # if loss doesnt level out after 20 epochs, eithr inc epochs or inc learning rate
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
     for epoch in range(NB_EPOCH):  # loop over the dataset multiple times
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
@@ -418,6 +418,8 @@ def main_pytorch_model():
 
 
 if __name__ == '__main__':
+    # to train Keras model:
     # main_compare_dual_model()
+    # to train pytorch model:
     main_pytorch_model()
-    # main_multi_input_model()
+
