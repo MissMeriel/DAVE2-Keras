@@ -18,7 +18,7 @@ import PIL
 import matplotlib.pyplot as plt
 import csv
 from DAVE2 import DAVE2Model
-from DatasetGenerator import DatasetGenerator, DataSequence
+from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataSequence
 import time
 
 from DAVE2pytorch import DAVE2PytorchModel, DAVE2v2
@@ -259,7 +259,6 @@ def main_compare_dual_model():
     dirlist = [0,1,2]
     generator = DatasetGenerator(dirlist, batch_size=10000, dim=(32,32,32), n_channels=1,
                  feature="steering", shuffle=False)
-
     # 2D output
     if X is None and X_kph is None and y_all is None:
         X, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output(m1)
@@ -290,6 +289,11 @@ def main_compare_dual_model():
     print("All done :)")
     print("Time to train: {}".format(time.time() - start_time))
 
+def main_restructure_dataset():
+    generator = DatasetGenerator([0,1,2], batch_size=10000, dim=(32,32,32), n_channels=1,
+                 feature="steering", shuffle=False)
+    generator.restructure_training_set()
+
 def main_multi_input_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
@@ -303,13 +307,10 @@ def main_multi_input_model():
     model1 = m1.define_model()
     model2 = m2.define_model()
     model3 = m3.define_multi_input_model_BeamNG([150, 200, 3])
-
     dirlist = [0,1,2]
     generator = DatasetGenerator(dirlist, batch_size=10000, dim=(32,32,32), n_channels=1,
                  feature="steering", shuffle=False)
-
     # 2D output
-
     if X is None and X_kph is None and y_all is None:
         X, X_kph, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output_and_multi_input(m1)
     print("dataset size: {} output size: {}".format(X.shape, y_all.shape))
@@ -346,55 +347,38 @@ def main_multi_input_model():
 def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
-
-    # Convert training dataframe into images and labels arrays
-    # Training data generator with random shear and random brightness
     start_time = time.time()
     # Start of MODEL Definition
-    # model = DAVE2PytorchModel()
-    model = DAVE2v2()
+    model = DAVE2PytorchModel() #DAVE2v2() #
     print(model)
-    generator = DatasetGenerator([0,1,2], batch_size=10000, dim=(32,32,32), n_channels=1,
-                 feature="steering", shuffle=False)
-    generator.restructure_training_set()
-    exit(0)
-    # 2D output
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64
     NB_EPOCH = 20
+    # turn np.array to pytorch Tensor
     # if X is None and X_kph is None and y_all is None:
     #     X, y_steering = generator.process_all_training_dirs_pytorch() #process_first_half_of_dataset_for_pytorch()
     # X = torch.from_numpy(X).permute(0,3,1,2).float()/255.0
     # y_steering = torch.from_numpy(y_steering).float()/255.0
     # X = torch.as_tensor(X).permute(0,3,1,2).float()/255.0 #, device=torch.device('cuda'))
     # y_steering = torch.as_tensor(y_steering).float()/255.0 #, device=torch.device('cuda'))
-    # dataseq = DataSequence('H:/BeamNG_DAVE2_racetracks_all/restruct/', transform=(0,3,1,2))
-    # training_directory = 'H:/BeamNG_DAVE2_racetracks_all/PID/training_images_100Hz_100Ksamples_industrial-racetrackstartinggate/'
-    training_directory = 'H:/BeamNG_DAVE2_racetracks_all/PID/training_images_100Hz_100Ksamples_industrial-racetrackstartinggate3/'
-    # training_directory = 'H:/BeamNG_DAVE2_racetracks_all/restruct/'
-    # training_directory = "H:/BeamNG_DAVE2_racetracks_all/PID/training_images_10Hz_industrial-racetrackstartinggate1/"
-    dataset = DataSequence(training_directory, transform=Compose([ToTensor()]))
-    # data_loader = data.DataLoader(dataset, batch_size=len(dataset))
-    # dataset = TensorDataset(X, y_steering)
+    # dataset = DataSequence(training_directory, transform=Compose([ToTensor()]))
+    dataset = MultiDirectoryDataSequence("H:/BeamNG_DAVE2_racetracks_all/PID/", transform=Compose([ToTensor()]))
+    print("Retrieving output distribution....")
+    print("Moments of distribution:", dataset.get_outputs_distribution())
+
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-    # print("dataset size: {} y_all size: {}".format(X.shape, y_all.shape))
     print("time to load dataset: {}".format(time.time() - start_time))
 
     # train model
-    iteration = '7-v2-20epochs-86Ksamples-dualoutput'
-    # ckptroot = 'trained_models/'
+    iteration = '7-trad-20epochs-100Ksamples-singleoutput'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
     model = model.to(device)
     # if loss doesnt level out after 20 epochs, eithr inc epochs or inc learning rate
-    # optimizer = optim.SGD(model.parameters(), lr=0.001, weight_decay=1e-4, momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08)
     for epoch in range(NB_EPOCH):  # loop over the dataset multiple times
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
-            # print(f"{row=}")
-            # x = torch.from_numpy(hashmap['image']).to(device)
-            # y = torch.from_numpy(hashmap['steering_input']).to(device)
             x = hashmap['image'].float().to(device)
             y = hashmap['steering_input'].float().to(device)
 
@@ -403,8 +387,6 @@ def main_pytorch_model():
 
             # forward + backward + optimize
             outputs = model(x)
-            # print(f"{outputs.shape=}")
-            # print(f"{y.shape=}")
             # loss = F.mse_loss(outputs.flatten(), y)
             loss = F.mse_loss(outputs, y)
             loss.backward()

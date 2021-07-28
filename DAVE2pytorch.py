@@ -40,8 +40,8 @@ class DAVE2PytorchModel(nn.Module):
         self.lin1 = nn.Linear(in_features=13824, out_features=100, bias=True)
         self.lin2 = nn.Linear(in_features=100, out_features=50, bias=True)
         self.lin3 = nn.Linear(in_features=50, out_features=10, bias=True)
-        self.lin4 = nn.Linear(in_features=10, out_features=2, bias=True)
-        # self.lin4 = nn.Linear(in_features=10, out_features=1, bias=True)
+        # self.lin4 = nn.Linear(in_features=10, out_features=2, bias=True)
+        self.lin4 = nn.Linear(in_features=10, out_features=1, bias=True)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -110,7 +110,7 @@ class DAVE2v2(nn.Module):
         self.dropout = nn.Dropout(0.5)
 
         self.lin1 = nn.Linear(8320, 512)
-        self.lin2 = nn.Linear(512, 2)
+        self.lin2 = nn.Linear(512, 1)
 
         self.max_action = 1.0
 

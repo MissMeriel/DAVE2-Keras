@@ -111,7 +111,6 @@ class DatasetGenerator(keras.utils.Sequence):
         # print(len(steering_Y_train))
         # return np.asarray(X_train), np.asarray(steering_Y_train)
 
-
     def process_enumerated_training_dirs(self, filename_root, trainingdir_indices, m):
         X_train = np.empty((10000 * len(trainingdir_indices), 150, 200, 3))
         steering_Y_train = np.empty((10000 * len(trainingdir_indices)))
@@ -133,7 +132,6 @@ class DatasetGenerator(keras.utils.Sequence):
                 steering_Y_train[adjusted_index] = float(hashmap[img][1])
                 throttle_Y_train[adjusted_index] = float(hashmap[img][2])
             return X_train, steering_Y_train, throttle_Y_train
-
 
     def process_all_training_dirs(self, m):
         rootdir = 'H:/BeamNG_DAVE2_racetracks_all/'
@@ -164,7 +162,6 @@ class DatasetGenerator(keras.utils.Sequence):
                 throttle_Y_train[adjusted_index] = copy.deepcopy(float(hashmap[img][2]))
             print("adjusted_index end", adjusted_index)
         return X_train, steering_Y_train, throttle_Y_train
-
 
     def process_all_training_dirs_with_2D_output(self):
         rootdir = 'H:/BeamNG_DAVE2_racetracks_all/PID/'
@@ -439,7 +436,7 @@ class DataSequence(data.Dataset):
         y_steer = self.df.loc[df_index, 'steering_input'].array[0]
         y = [y_steer, y_thro]
         # torch.stack(y, dim=1)
-        y = torch.tensor(y)
+        y = torch.tensor(y_steer)
 
         # plt.title(f"steering_input={y_steer.array[0]}")
         # plt.imshow(image)
@@ -470,46 +467,64 @@ class MultiDirectoryDataSequence(data.Dataset):
         """
         self.root = root
         self.transform = transform
-
-        image_paths = []
+        self.size = 0
+        image_paths_hashmap = {}
+        all_image_paths = []
+        self.dfs_hashmap = {}
         for p in Path(root).iterdir():
-            if p.suffix.lower() in [".jpg", ".png", ".jpeg", ".bmp"]:
-                image_paths.append(p)
-        image_paths.sort(key=lambda p: int(stripleftchars(p.stem)))
-        self.image_paths = image_paths
+            if "100K" not in str(p):
+                image_paths = []
+                self.dfs_hashmap[f"{p}"] = pd.read_csv(f"{p}/data.csv")
+                for pp in Path(p).iterdir():
+                    if pp.suffix.lower() in [".jpg", ".png", ".jpeg", ".bmp"]:
+                        image_paths.append(pp)
+                        # print(f"{pp=}")
+                        # print(f"{p=}\n")
+                        all_image_paths.append(pp)
+                image_paths.sort(key=lambda p: int(stripleftchars(p.stem)))
+                image_paths_hashmap[p] = copy.deepcopy(image_paths)
+                self.size += len(image_paths)
+        print("Finished intaking image paths!!")
+        self.image_paths_hashmap = image_paths_hashmap
+        self.all_image_paths = all_image_paths
         # print(f"{self.image_paths=}")
-        self.df = pd.read_csv(f"{self.root}/data.csv")
+        # self.df = pd.read_csv(f"{self.root}/data.csv")
         self.cache = {}
 
     def __len__(self):
-        return len(self.image_paths)
+        return len(self.all_image_paths)
 
     def __getitem__(self, idx):
         if idx in self.cache:
             return self.cache[idx]
-        img_name = self.image_paths[idx]
+        img_name = self.all_image_paths[idx]
         image = sio.imread(img_name)
-
-        # print(f"{image=}")
-        df_index = self.df.index[self.df['filename'] == img_name.name]
-        y_steer = self.df.loc[df_index, 'steering_input']
-
-        # plt.title(f"steering_input={y_steer.array[0]}")
+        pathobj = Path(img_name)
+        df = self.dfs_hashmap[f"{pathobj.parent}"]
+        df_index = df.index[df['filename'] == img_name.name]
+        y_steer = df.loc[df_index, 'steering_input']
+        # vvvvvv uncomment below for debugging vvvvvv
+        # plt.title(f"{img_name}\nsteering_input={y_steer.array[0]}", fontsize=7)
         # plt.imshow(image)
         # plt.show()
         # plt.pause(0.01)
-
         if self.transform:
             image = self.transform(image).float()
-        # print(f"{img_name.name=} {y_steer=}")
-        # print(f"{image=}")
-        # print(f"{type(image)=}")
-        # print(self.df)
-        # print(y_steer.array[0])
-
         sample = {"image": image, "steering_input": y_steer.array[0]}
         self.cache[idx] = sample
         return sample
+
+    def get_outputs_distribution(self):
+        all_outputs = np.array([])
+        for key in self.dfs_hashmap.keys():
+            df = self.dfs_hashmap[key]
+            arr = df['steering_input'].to_numpy()
+            print(f"{len(arr)=}")
+            all_outputs = np.concatenate((all_outputs, arr), axis=0)
+            print(f"Retrieved dataframe {key=}")
+        all_outputs = np.array(all_outputs)
+        moments = self.get_distribution_moments(all_outputs)
+        return moments
 
     ##################################################
     # ANALYSIS METHODS
@@ -520,9 +535,10 @@ class MultiDirectoryDataSequence(data.Dataset):
         moments = {}
         moments['shape'] = np.asarray(arr).shape
         moments['mean'] = np.mean(arr)
+        moments['median'] = np.median(arr)
         moments['var'] = np.var(arr)
         moments['skew'] = stats.skew(arr)
-        moments['kurtosis'] = stats.kurtosis  (arr)
+        moments['kurtosis'] = stats.kurtosis(arr)
         moments['max'] = max(arr)
         moments['min'] = min(arr)
         return moments
