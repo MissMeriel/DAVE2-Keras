@@ -2,6 +2,8 @@ import numpy as np
 import keras
 import os, cv2, csv
 from DAVE2 import DAVE2Model
+from DAVE2pytorch import DAVE2PytorchModel
+
 from PIL import Image
 import copy
 from scipy import stats
@@ -13,6 +15,8 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import imshow
+
+from torchvision.transforms import ToTensor, functional as transforms
 
 class DatasetGenerator(keras.utils.Sequence):
     'Generates data for Keras'
@@ -165,10 +169,10 @@ class DatasetGenerator(keras.utils.Sequence):
 
     def process_all_training_dirs_with_2D_output(self):
         rootdir = 'H:/BeamNG_DAVE2_racetracks_all/PID/'
-        dirs = os.listdir(rootdir)[:5]
+        dirs = os.listdir(rootdir)
+        dirs = [d for d in dirs if "100K" not in d]
         sizes = []
-        print("dirs:", dirs)
-        # exit(0)
+        print(len(dirs), "dirs:", dirs)
         for d in dirs:
             sizes.append(self.get_dataset_size(rootdir + d))
         X_train = np.empty((sum(sizes), 150, 200, 3))
@@ -499,19 +503,38 @@ class MultiDirectoryDataSequence(data.Dataset):
         if idx in self.cache:
             return self.cache[idx]
         img_name = self.all_image_paths[idx]
-        image = sio.imread(img_name)
+        # image = sio.imread(img_name)
+        image = Image.open(img_name)
+        # image = DAVE2PytorchModel.process_image(np.array(image))
+        # image = cv2.resize(np.array(image), (150,200))
+        # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
+        # image = np.array(image) #.reshape(1, self.input_shape[0], self.input_shape[1], 3)
+        # use transpose instead of reshape -- reshape doesn't change representation in memory
+        # image = image.transpose((2,0,1))
+        # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
+        # image = torch.from_numpy(image)/255.0 #transform(image)
+        image = transforms.to_tensor(image)
         pathobj = Path(img_name)
         df = self.dfs_hashmap[f"{pathobj.parent}"]
         df_index = df.index[df['filename'] == img_name.name]
-        y_steer = df.loc[df_index, 'steering_input']
+        y_steer = df.loc[df_index, 'steering_input'].item()
+        y_throttle = df.loc[df_index, 'throttle_input'].item()
+        # try:
+        #     y_steer = torch.FloatTensor(y_steer)
+        # except TypeError as e:
+        #     print(df.loc[df_index, 'steering_input'])
+        #     print(e)
+        #     exit(0)
         # vvvvvv uncomment below for debugging vvvvvv
         # plt.title(f"{img_name}\nsteering_input={y_steer.array[0]}", fontsize=7)
         # plt.imshow(image)
         # plt.show()
         # plt.pause(0.01)
-        if self.transform:
-            image = self.transform(image).float()
-        sample = {"image": image, "steering_input": y_steer.array[0]}
+        # if self.transform:
+        # image = self.transform(image).float()
+        # 3,150,200
+        # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
+        sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
         self.cache[idx] = sample
         return sample
 

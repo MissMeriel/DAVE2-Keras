@@ -2,11 +2,8 @@ import numpy as np
 import pandas as pd
 import cv2
 import matplotlib.image as mpimg
-import json
 
 import tensorflow as tf
-#from keras.models import Sequential
-#from keras.layers import Conv2D, MaxPooling2D, Dense, Dropout
 from tensorflow.keras import Model
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Conv2D, Flatten, Dense, MaxPooling2D, Dropout
@@ -15,8 +12,6 @@ from keras.optimizers import Adam
 from keras.utils import np_utils
 from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Conv2D, MaxPooling2D, Input, Dense, Flatten, concatenate
-
-import h5py
 import os
 from PIL import Image
 import PIL
@@ -31,8 +26,6 @@ class DAVE2Model:
         # Start of MODEL Definition
         # Input normalization layer
         self.model.add(Lambda(lambda x: x / 127.5 - 1., input_shape=self.input_shape, name='lambda_norm'))
-
-        # 5x5 Convolutional layers with stride of 2x2
 
         # 5x5 Convolutional layers with stride of 2x2
         self.model.add(Conv2D(24, 5, 2, name='conv1'))
@@ -164,38 +157,6 @@ class DAVE2Model:
 
     def define_multi_input_model_BeamNG(self, inputshape=(150, 200, 3)):
         self.input_shape = inputshape
-        # define two sets of inputs
-        # inputA = Input(shape=(32,))
-        # inputB = Input(shape=(128,))
-        # x1 = tf.keras.layers.Dense(8)(np.arange(10).reshape(5, 2))
-        # x2 = tf.keras.layers.Dense(8)(np.arange(10, 20).reshape(5, 2))
-        # concatted = tf.keras.layers.Concatenate()([x1, x2])
-        # print(x1.shape)
-        # print(x2.shape)
-        # print(concatted.shape)
-        # exit(0)
-        # speed_input = Input(shape=(1), name='speed')
-        # image_input = Input(shape=(150, 200, 3), name='image')
-        # speed_input = Input(shape=(150, 200, 1), name='speed')
-        # image_input = Input(shape=(150, 200, 3), name='image')
-        # # the first branch operates on the first input
-        # x = Dense(8, activation="relu")(speed_input)
-        # x = Dense(8, activation="relu")(x)
-        # x = Model(inputs=speed_input, outputs=x)
-        # # the second branch opreates on the second input
-        # y = Dense(64, activation="relu")(image_input)
-        # y = Dense(32, activation="relu")(y)
-        # y = Dense(8, activation="relu")(y)
-        # y = Model(inputs=image_input, outputs=y)
-        # # combine the output of the two branches
-        # combined = tf.keras.layers.Concatenate(axis=3)([x.output, y.output]) # this works
-        # combined = concatenate(axis=3)([x.output, y.output])
-        # apply a FC layer and then a regression prediction on the
-        # combined outputs
-        # z = Dense(2, activation="relu")(combined)
-        # z = Dense(1, activation="linear")(z)
-        # model = Model(inputs=[x.input, y.input], outputs=z)
-        #
         # # Start of DAVE2 model Definition
         speed_input = Input(shape=(1,), name='speed')
         image_input = Input(shape=(150, 200, 3), name='image')
@@ -261,25 +222,6 @@ class DAVE2Model:
         x = ELU(name='elu2')(x)
         x = Conv2D(48, 5, 2, name='conv3')(x)
         x = ELU(name='elu3')(x)
-
-        # # 3x3 Convolutional layers with stride of 1x1
-        # self.model.add(Conv2D(64, 3, 1, name='conv4'))
-        # self.model.add(ELU(name='elu4'))
-        # self.model.add(Conv2D(64, 3, 1, name='conv5'))
-        # self.model.add(ELU(name='elu5'))
-        #
-        # # Flatten before passing to the fully connected layers
-        # self.model.add(Flatten())
-        # # Three fully connected layers
-        # self.model.add(Dense(100, name='fc1'))
-        # self.model.add(Dropout(.5, name='do1'))
-        # self.model.add(ELU(name='elu6'))
-        # self.model.add(Dense(50, name='fc2'))
-        # self.model.add(Dropout(.5, name='do2'))
-        # self.model.add(ELU(name='elu7'))
-        # self.model.add(Dense(10, name='fc3'))
-        # self.model.add(Dropout(.5, name='do3'))
-        # self.model.add(ELU(name='elu8'))
 
         # Output layer with tanh activation
         x = Dense(2, activation='tanh', name='output')(x)
@@ -372,11 +314,12 @@ class DAVE2Model:
         self.model.load_weights(filename)
         return self.model
 
-    def process_image(self, image):
+    @classmethod
+    def process_image(cls, image):
         # image = image.crop((0, 200, 512, 369))
         # image = image.resize((self.input_shape[1], self.input_shape[0]), Image.ANTIALIAS)
-        image = cv2.resize(image, (self.input_shape[0], self.input_shape[1]))
-        image = np.array(image).reshape(1, self.input_shape[0], self.input_shape[1], self.input_shape[2])
+        image = cv2.resize(image, (150,200))
+        image = np.array(image).reshape(1,150,200,3)
         return image
 
     # Functions to read and preprocess images

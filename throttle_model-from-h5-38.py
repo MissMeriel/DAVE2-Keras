@@ -10,6 +10,7 @@ from keras.layers import Activation, Flatten, Lambda, Input, ELU
 from keras.optimizers import Adam
 from keras.utils import np_utils
 from keras.preprocessing.image import ImageDataGenerator
+from torch.autograd import Variable
 
 import h5py
 import os
@@ -21,7 +22,7 @@ from DAVE2 import DAVE2Model
 from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataSequence
 import time
 
-from DAVE2pytorch import DAVE2PytorchModel, DAVE2v2
+from DAVE2pytorch import DAVE2PytorchModel, DAVE2v2, ConvNet
 
 import torch
 import torch.nn as nn
@@ -29,29 +30,11 @@ import torch.nn.functional as F
 from torch.utils import data
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
-from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda
-
+from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda, Normalize
 
 sample_count = 0
 path_to_trainingdir = 'H:/BeamNG_DAVE2_racetracks'
 X = None; X_kph = None; y_all = None; y_steering = None; y_throttle = None
-
-def redo_csv(readfile):
-    temp = readfile.split("/")
-    writefile = "/".join(temp[:-1]) + "data1.csv"
-    #print("writefile:{}".format(writefile))
-    with open(readfile) as csvfile:
-        with open(writefile, 'w') as csvfile1:
-            metadata = csvfile.readlines()
-            #metadata = csv.reader(csvfile, delimiter=',')
-            for row in metadata:
-                #row = row.replace('C:\\Users\\merie\\Documents\\BeamNGpy-master\\BeamNGpy-master\\examples/', '')
-                row = row.replace('H:/BeamNG_DAVE2_racetracks/', '')
-                row = row.replace('bmp', 'png')
-                csvfile1.write(row)
-                #print("row:{}".format(row))
-    os.remove(readfile)
-    os.rename(writefile, readfile)
 
 def process_csv(filename):
     global path_to_trainingdir
@@ -94,74 +77,6 @@ def process_training_dir(trainingdir, m):
         sample_count += 1
     return np.asarray(X_train), np.asarray(steering_Y_train),np.asarray(throttle_Y_train)
 
-def main2():
-    global sample_count, path_to_trainingdir
-    # Convert training dataframe into images and labels arrays
-    # Training data generator with random shear and random brightness
-    start_time = time.time()
-    # Start of MODEL Definition
-    m = DAVE2Model()
-    model = m.define_model()
-
-    # prep training set
-    t = os.listdir(path_to_trainingdir)
-    training_dirs = ["{}/{}/".format(path_to_trainingdir, training_dir) for training_dir in t]
-    # for training_dir in t:
-    #     training_dirs.append("{}/{}/".format(path_to_trainingdir, training_dir))
-
-    shape = (0, 1, m.input_shape[0], m.input_shape[1], m.input_shape[2])
-    X_train = np.array([]).reshape(shape); y_train = np.array([])
-    for d in training_dirs[-1:]:
-        print("Processing {}".format(d))
-        redo_csv("{}/data.csv".format(d))
-        x_temp, steering_y_temp, throttle_y_temp = process_training_dir(d, m)
-        print("Concatenating X_train shape:{} x_temp shape:{}".format(X_train.shape, x_temp.shape))
-        X_train = np.concatenate((X_train, x_temp), axis=0)
-        steering_y_train = np.concatenate((y_train,steering_y_temp), axis=0)
-        throttle_y_train = np.concatenate((y_train,throttle_y_temp), axis=0)
-    print("Final X_train shape:{} Final y_train shape:{}".format(X_train.shape, steering_y_train.shape))
-
-    # Train and save the model
-    BATCH_SIZE = 100
-    NB_EPOCH = 9
-    NB_SAMPLES = 2*len(X_train)
-    # Train steering
-    model.fit(x=X_train, y=steering_y_train, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    model_name = 'BeamNGmodel-racetracksteering'
-    model.save_weights('{}.h5'.format(model_name))
-    with open('{}.json'.format(model_name), 'w') as outfile:
-        json.dump(model.to_json(), outfile)
-    # Train throttle
-    model.fit(x=X_train, y=throttle_y_train, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    model_name = 'BeamNGmodel-racetrackthrottle'
-    model.save_weights('{}.h5'.format(model_name))
-    with open('{}.json'.format(model_name), 'w') as outfile:
-        json.dump(model.to_json(), outfile)
-    print("All done :)")
-    print("Total training samples: {}".format(sample_count))
-    print("Time to train: {}".format(time.time() - start_time))
-
-def main3():
-    global sample_count, path_to_trainingdir
-    # Convert training dataframe into images and labels arrays
-    # Training data generator with random shear and random brightness
-    start_time = time.time()
-    # Start of MODEL Definition
-    m = DAVE2Model()
-    model = m.define_model()
-    generator = DatasetGenerator([0,1,2], batch_size=10000, dim=(32,32,32), n_channels=1,
-                 feature="steering", shuffle=False)
-    model.fit_generator(generator, steps_per_epoch=None, epochs=1, verbose=1,
-                        callbacks=None, validation_data=None, validation_steps=None,
-                        validation_freq=1, class_weight=None, max_queue_size=10,
-                        workers=1, use_multiprocessing=False, shuffle=False, initial_epoch=0)
-    model_name = 'BeamNGmodel-racetracksteering2'
-    model.save_weights('{}.h5'.format(model_name))
-    with open('{}.json'.format(model_name), 'w') as outfile:
-        json.dump(model.to_json(), outfile)
-    print("All done :)")
-    print("Time to train: {}".format(time.time() - start_time))
-
 def save_model(model, model_name):
     model.save_weights('{}-weights.h5'.format(model_name))
     model.save('{}-model.h5'.format(model_name))
@@ -185,62 +100,6 @@ def characterize_steering_distribution(y_steering, generator):
         print("len(turning)", len(turning))
         print("len(straight)", len(straight))
 
-def main():
-    global sample_count, path_to_trainingdir
-    # Convert training dataframe into images and labels arrays
-    # Training data generator with random shear and random brightness
-    start_time = time.time()
-    # Start of MODEL Definition
-    m1 = DAVE2Model()
-    m2 = DAVE2Model()
-    model1 = m1.define_model()
-    model2 = m2.define_model()
-    dirlist = [0,1,2]
-    generator = DatasetGenerator(dirlist, batch_size=10000, dim=(32,32,32), n_channels=1,
-                 feature="steering", shuffle=False)
-    # model.fit_generator(generator, steps_per_epoch=None, epochs=1, verbose=1,
-    #                     callbacks=None, validation_data=None, validation_steps=None,
-    #                     validation_freq=1, class_weight=None, max_queue_size=10,
-    #                     workers=1, use_multiprocessing=False, shuffle=False, initial_epoch=0)
-    # for d in dirlist:
-    #     print("Batch training on dir {}".format(d))
-    #     X,y1, y2 = generator.data_generation(d)
-    #     model1.train_on_batch(X, y1)
-    #     model2.train_on_batch(X, y2)
-    filename_root = "H:/BeamNG_DAVE2_racetracks/training_images_industrial-racetrackstartinggate"
-    # X, y_steering, y_throttle = generator.process_enumerated_training_dirs(filename_root, dirlist, m1)
-
-    # 1D output
-    X, y_steering, y_throttle = generator.process_all_training_dirs(m1)
-    print("X .shape", X.shape, "y_steering.shape", y_steering.shape, "y_throttle.shape", y_throttle.shape)
-    characterize_steering_distribution(y_steering, generator)
-    print("Moments of steering distribution:", generator.get_distribution_moments(y_steering))
-    print("Moments of throttle distribution:", generator.get_distribution_moments(y_throttle))
-
-    # 2D output
-    # X, y = generator.process_all_training_dirs_with_2D_output(m1)
-
-    print("time to load dataset: {}".format(time.time() - start_time))
-
-    BATCH_SIZE = 64
-    NB_EPOCH = 20
-
-    # Train steering
-    it = "1Doutput"
-    model1_name = 'BeamNGmodel-racetracksteering{}'.format(it)
-    model2_name = 'BeamNGmodel-racetrackthrottle{}'.format(it)
-    model1.fit(x=X, y=y_steering, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    save_model(model1, model1_name)
-    print("Finished steering model")
-    # delete the previous model so that you don't max out the memory
-    del model1; del y_steering
-    model2.fit(x=X, y=y_throttle, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    save_model(model2, model2_name)
-    print("Finished throttle model")
-
-    print("All done :)")
-    print("Time to train: {}".format(time.time() - start_time))
-
 def main_compare_dual_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
@@ -249,19 +108,15 @@ def main_compare_dual_model():
     # Training data generator with random shear and random brightness
     start_time = time.time()
     # Start of MODEL Definition
-    m1 = DAVE2Model()
-    m2 = DAVE2Model()
-    m3 = DAVE2Model()
-    model1 = m1.define_model()
-    model2 = m2.define_model()
-    model3 = m3.define_dual_model_BeamNG()
-    print(model3.summary())
+    m = DAVE2Model()
+    model = m.define_dual_model_BeamNG()
+    print(model.summary())
     dirlist = [0,1,2]
     generator = DatasetGenerator(dirlist, batch_size=10000, dim=(32,32,32), n_channels=1,
                  feature="steering", shuffle=False)
     # 2D output
     if X is None and X_kph is None and y_all is None:
-        X, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output(m1)
+        X, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output()
     print("dataset size: {} output size: {}".format(X.shape, y_all.shape))
     print("time to load dataset: {}".format(time.time() - start_time))
 
@@ -269,21 +124,10 @@ def main_compare_dual_model():
     NB_EPOCH = 20
 
     # Train steering
-    it = "-comparison100K-PIDcontrolset-3"
-    model1_name = 'BeamNGmodel-racetracksteering{}'.format(it)
-    model2_name = 'BeamNGmodel-racetrackthrottle{}'.format(it)
-    model3_name = 'BeamNGmodel-racetrackdual{}'.format(it)
-    # model1.fit(x=X, y=y_steering, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    # save_model(model1, model1_name)
-    # print("Finished steering model")
-    # # delete the previous model so that you don't max out the memory
-    # del model1
-    # model2.fit(x=X, y=y_throttle, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    # save_model(model2, model2_name)
-    # print("Finished throttle model")
-    # del model2
-    model3.fit(x=X, y=y_all, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    save_model(model3, model3_name)
+    it = "-comparison100K-PIDcontrolset-3-sanitycheckretraining"
+    model_name = 'BeamNGmodel-racetrackdual{}'.format(it)
+    model.fit(x=X, y=y_all, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
+    save_model(model, model_name)
     print("Finished dual model")
 
     print("All done :)")
@@ -320,13 +164,13 @@ def main_multi_input_model():
     print("y_all.shape", y_all.shape)
 
 
-    BATCH_SIZE = 64
+    BATCH_SIZE = 32
     NB_EPOCH = 20
 
     # Train steering
     it = "comparison100K-PIDcontrolset-2"
-    model1_name = 'BeamNGmodel-racetracksteering-{}'.format(it)
-    model2_name = 'BeamNGmodel-racetrackthrottle-{}'.format(it)
+    # model1_name = 'BeamNGmodel-racetracksteering-{}'.format(it)
+    # model2_name = 'BeamNGmodel-racetrackthrottle-{}'.format(it)
     model3_name = 'BeamNGmodel-racetrack-multiinput-dualoutput-{}'.format(it)
     # model1.fit(x=X, y=y_steering, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
     # save_model(model1, model1_name)
@@ -352,7 +196,7 @@ def main_pytorch_model():
     model = DAVE2PytorchModel() #DAVE2v2() #
     print(model)
     BATCH_SIZE = 64
-    NB_EPOCH = 20
+    NB_EPOCH = 50
     # turn np.array to pytorch Tensor
     # if X is None and X_kph is None and y_all is None:
     #     X, y_steering = generator.process_all_training_dirs_pytorch() #process_first_half_of_dataset_for_pytorch()
@@ -361,26 +205,32 @@ def main_pytorch_model():
     # X = torch.as_tensor(X).permute(0,3,1,2).float()/255.0 #, device=torch.device('cuda'))
     # y_steering = torch.as_tensor(y_steering).float()/255.0 #, device=torch.device('cuda'))
     # dataset = DataSequence(training_directory, transform=Compose([ToTensor()]))
-    dataset = MultiDirectoryDataSequence("H:/BeamNG_DAVE2_racetracks_all/PID/", transform=Compose([ToTensor()]))
+    dataset = MultiDirectoryDataSequence("H:/BeamNG_DAVE2_racetracks_all/PID/", transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
+
     print("Retrieving output distribution....")
     print("Moments of distribution:", dataset.get_outputs_distribution())
 
-    trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    def worker_init_fn(worker_id):
+        np.random.seed(np.random.get_state()[1][0] + worker_id)
+
+    trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
     print("time to load dataset: {}".format(time.time() - start_time))
 
     # train model
-    iteration = '7-trad-20epochs-100Ksamples-singleoutput'
+    iteration = '7-trad-50epochs-64batch-1e4lr-ORIGDATASET-singleoutput'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
     model = model.to(device)
-    # if loss doesnt level out after 20 epochs, eithr inc epochs or inc learning rate
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
+    # if loss doesnt level out after 20 epochs, either inc epochs or inc learning rate
+    optimizer = optim.Adam(model.parameters(), lr=1e-4) #, betas=(0.9, 0.999), eps=1e-08)
     for epoch in range(NB_EPOCH):  # loop over the dataset multiple times
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
             x = hashmap['image'].float().to(device)
             y = hashmap['steering_input'].float().to(device)
+            x = Variable(x, requires_grad=True)
+            y = Variable(y, requires_grad=False)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -389,6 +239,7 @@ def main_pytorch_model():
             outputs = model(x)
             # loss = F.mse_loss(outputs.flatten(), y)
             loss = F.mse_loss(outputs, y)
+            # loss = F.gaussian_nll_loss(outputs, y)
             loss.backward()
             optimizer.step()
 
@@ -409,7 +260,7 @@ def main_pytorch_model():
     print('Finished Training')
 
     # save model
-    torch.save(model.state_dict(), f'H:/GitHub/DAVE2-Keras/test{iteration}-weights.pt')
+    # torch.save(model.state_dict(), f'H:/GitHub/DAVE2-Keras/test{iteration}-weights.pt')
     torch.save(model, f'H:/GitHub/DAVE2-Keras/test{iteration}-model.pt')
     print("Finished dual model")
 
@@ -422,4 +273,3 @@ if __name__ == '__main__':
     # main_compare_dual_model()
     # to train pytorch model:
     main_pytorch_model()
-

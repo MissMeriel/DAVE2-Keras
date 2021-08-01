@@ -32,47 +32,56 @@ class DAVE2PytorchModel(nn.Module):
         self.input_shape = (150,200)
         self.conv1 = nn.Conv2d(3, 24, 5, stride=2)
         torch.nn.init.xavier_uniform_(self.conv1.weight)
+        torch.nn.init.zeros_(self.conv1.bias)
         self.conv2 = nn.Conv2d(24, 36, 5, stride=2)
         torch.nn.init.xavier_uniform_(self.conv2.weight)
+        torch.nn.init.zeros_(self.conv2.bias)
         self.conv3 = nn.Conv2d(36, 48, 5, stride=2)
         torch.nn.init.xavier_uniform_(self.conv3.weight)
+        torch.nn.init.zeros_(self.conv3.bias)
         self.conv4 = nn.Conv2d(48, 64, 3, stride=1)
         torch.nn.init.xavier_uniform_(self.conv4.weight)
+        torch.nn.init.zeros_(self.conv4.bias)
         self.conv5 = nn.Conv2d(64, 64, 3, stride=1)
         torch.nn.init.xavier_uniform_(self.conv5.weight)
+        torch.nn.init.zeros_(self.conv5.bias)
         self.dropout = nn.Dropout()
         # self.flatten = nn.Flatten()
         self.lin1 = nn.Linear(in_features=13824, out_features=100, bias=True)
         torch.nn.init.xavier_uniform_(self.lin1.weight)
+        torch.nn.init.zeros_(self.lin1.bias)
         self.lin2 = nn.Linear(in_features=100, out_features=50, bias=True)
         torch.nn.init.xavier_uniform_(self.lin2.weight)
+        torch.nn.init.zeros_(self.lin2.bias)
         self.lin3 = nn.Linear(in_features=50, out_features=10, bias=True)
         torch.nn.init.xavier_uniform_(self.lin3.weight)
+        torch.nn.init.zeros_(self.lin3.bias)
         # self.lin4 = nn.Linear(in_features=10, out_features=2, bias=True)
         self.lin4 = nn.Linear(in_features=10, out_features=1, bias=True)
         torch.nn.init.xavier_uniform_(self.lin4.weight)
+        torch.nn.init.zeros_(self.lin4.bias)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.conv2(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.conv3(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.conv4(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.conv5(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = x.flatten(1)
         x = self.lin1(x)
         x = self.dropout(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.lin2(x)
         x = self.dropout(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.lin3(x)
         x = self.dropout(x)
-        x = F.elu(x, inplace=True)
+        x = F.elu(x)
         x = self.lin4(x)
         x = torch.tanh(x)
         # x = 2 * torch.atan(x)
@@ -82,25 +91,25 @@ class DAVE2PytorchModel(nn.Module):
         return torch.load(path)
 
     # process PIL image to Tensor
-    def process_image(self, image, transform=Compose([ToTensor()])):
+    @classmethod
+    def process_image(cls, image, transform=Compose([ToTensor()])):
         # image = image.resize((self.input_shape[1], self.input_shape[0]), Image.ANTIALIAS)
-        image = cv2.resize(image, (self.input_shape[0], self.input_shape[1]))
+        # image = cv2.resize(image, (150,200))
         # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
-        image = np.array(image)[None]#.reshape(1, self.input_shape[0], self.input_shape[1], 3)
+        # image = np.array(image)[None]#.reshape(1, self.input_shape[0], self.input_shape[1], 3)
         # use transpose instead of reshape -- reshape doesn't change representation in memory
-        image = image.transpose((0,3,1,2))
+        # image = image.transpose((0,3,1,2))
         # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
-        if transform:
-            image = transform(image) #torch.from_numpy(image)/255.0 #transform(image)
-        return image #.permute(2, 1, 0)
+        # if transform:
+        # image = torch.from_numpy(image)/ 255.0 #127.5-1.0 #transform(image)
+        # print(f"{image.shape=}")
+        image = transform(image)[None]
+        return image#.permute(0,3,1,2)#(2, 1, 0)
 
 class DAVE2v2(nn.Module):
     def __init__(self):
         super().__init__()
         self.input_shape = (150,200)
-
-        # ONLY TRU IN CASE OF DUCKIETOWN:
-        flat_size = 32 * 9 * 14
 
         self.lr = nn.LeakyReLU()
         self.tanh = nn.Tanh()
@@ -144,15 +153,41 @@ class DAVE2v2(nn.Module):
     # process PIL image to Tensor
     def process_image(self, image, transform=Compose([ToTensor()])):
         # image = image.resize((self.input_shape[1], self.input_shape[0]), Image.ANTIALIAS)
-        image = cv2.resize(image, (150,200))
-        # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
-        image = np.array(image)[None]#.reshape(1, self.input_shape[0], self.input_shape[1], 3)
-        # use transpose instead of reshape -- reshape doesn't change representation in memory
-        image = image.transpose((0,3,1,2))
-        # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
-        if transform:
-            image = torch.from_numpy(image)/255.0 #transform(image)
+        # image = cv2.resize(image, (150,200))
+        # # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
+        # image = np.array(image)[None]#.reshape(1, self.input_shape[0], self.input_shape[1], 3)
+        # # use transpose instead of reshape -- reshape doesn't change representation in memory
+        # image = image.transpose((0,3,1,2))
+        # # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
+        # if transform:
+        #     image = torch.from_numpy(image)/255.0 #transform(image)
+        image = transform(image)
         return image #.permute(2, 1, 0)
 
     def load(self, path="test-model.pt"):
         return torch.load(path)
+
+class ConvNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3)
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.conv3 = nn.Conv2d(64, 128, 3)
+
+        self.fc1 = nn.Linear(5*5*128, 1024)
+        self.fc2 = nn.Linear(1024, 2048)
+        #### 1 -> 10
+        self.fc3 = nn.Linear(2048, 10)
+
+    def forward(self, x):
+        x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
+        x = F.max_pool2d(F.relu(self.conv2(x)), (2, 2))
+        x = F.max_pool2d(F.relu(self.conv3(x)), (2, 2))
+
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.dropout(x, 0.5)
+        #### removed sigmoid
+        x = self.fc3(x)
+        return x
