@@ -318,7 +318,7 @@ class DAVE2Model:
     def process_image(cls, image):
         # image = image.crop((0, 200, 512, 369))
         # image = image.resize((self.input_shape[1], self.input_shape[0]), Image.ANTIALIAS)
-        image = cv2.resize(image, (150,200))
+        image = cv2.resize(image, (200,150))
         image = np.array(image).reshape(1,150,200,3)
         return image
 

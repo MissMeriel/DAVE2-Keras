@@ -270,6 +270,6 @@ def main_pytorch_model():
 
 if __name__ == '__main__':
     # to train Keras model:
-    # main_compare_dual_model()
+    main_compare_dual_model()
     # to train pytorch model:
-    main_pytorch_model()
+    # main_pytorch_model()
