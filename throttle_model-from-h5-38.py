@@ -22,7 +22,7 @@ from DAVE2 import DAVE2Model
 from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataSequence
 import time
 
-from DAVE2pytorch import DAVE2PytorchModel, DAVE2v2, ConvNet
+from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3
 
 import torch
 import torch.nn as nn
@@ -193,7 +193,7 @@ def main_pytorch_model():
     global X, X_kph, y_all, y_steering, y_throttle
     start_time = time.time()
     # Start of MODEL Definition
-    model = DAVE2PytorchModel() #DAVE2v2() #
+    model = DAVE2v1(input_shape=(150,200)) #DAVE2PytorchModel() #
     print(model)
     BATCH_SIZE = 64
     NB_EPOCH = 50
@@ -217,7 +217,7 @@ def main_pytorch_model():
     print("time to load dataset: {}".format(time.time() - start_time))
 
     # train model
-    iteration = '7-trad-50epochs-64batch-1e4lr-ORIGDATASET-singleoutput'
+    iteration = 'dave2v1-lr1e4-50epoch-batch64-lossMSE'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
@@ -270,6 +270,6 @@ def main_pytorch_model():
 
 if __name__ == '__main__':
     # to train Keras model:
-    main_compare_dual_model()
+    # main_compare_dual_model()
     # to train pytorch model:
-    # main_pytorch_model()
+    main_pytorch_model()
