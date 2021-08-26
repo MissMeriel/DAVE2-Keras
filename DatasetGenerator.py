@@ -462,7 +462,7 @@ class DataSequence(data.Dataset):
         return sample
 
 class MultiDirectoryDataSequence(data.Dataset):
-    def __init__(self, root, transform=None):
+    def __init__(self, root, image_size=(100,100), transform=None):
         """
         Args:
             root_dir (string): Directory with all the images.
@@ -473,6 +473,7 @@ class MultiDirectoryDataSequence(data.Dataset):
         self.transform = transform
         print(self.transform)
         self.size = 0
+        self.image_size = image_size
         image_paths_hashmap = {}
         all_image_paths = []
         self.dfs_hashmap = {}
@@ -505,6 +506,10 @@ class MultiDirectoryDataSequence(data.Dataset):
         img_name = self.all_image_paths[idx]
         # image = sio.imread(img_name)
         image = Image.open(img_name)
+        image = image.resize(self.image_size)
+        # plt.imshow(image)
+        # plt.show()
+        # plt.pause(0.01)
         # image = DAVE2PytorchModel.process_image(np.array(image))
         # image = cv2.resize(np.array(image), (150,200))
         # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
@@ -513,26 +518,20 @@ class MultiDirectoryDataSequence(data.Dataset):
         # image = image.transpose((2,0,1))
         # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
         # image = torch.from_numpy(image)/255.0 #transform(image)
-        image = transforms.to_tensor(image)
+        # image = transforms.to_tensor(image)
+        image = self.transform(image)
         pathobj = Path(img_name)
         df = self.dfs_hashmap[f"{pathobj.parent}"]
         df_index = df.index[df['filename'] == img_name.name]
         y_steer = df.loc[df_index, 'steering_input'].item()
         y_throttle = df.loc[df_index, 'throttle_input'].item()
-        # try:
-        #     y_steer = torch.FloatTensor(y_steer)
-        # except TypeError as e:
-        #     print(df.loc[df_index, 'steering_input'])
-        #     print(e)
-        #     exit(0)
-        # vvvvvv uncomment below for debugging vvvvvv
+        # vvvvvv uncomment below for value-image debugging vvvvvv
         # plt.title(f"{img_name}\nsteering_input={y_steer.array[0]}", fontsize=7)
         # plt.imshow(image)
         # plt.show()
         # plt.pause(0.01)
         # if self.transform:
         # image = self.transform(image).float()
-        # 3,150,200
         # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
         sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
         self.cache[idx] = sample

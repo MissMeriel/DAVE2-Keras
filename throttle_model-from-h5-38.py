@@ -22,7 +22,7 @@ from DAVE2 import DAVE2Model
 from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataSequence
 import time
 
-from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3
+from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3, Epoch
 
 import torch
 import torch.nn as nn
@@ -80,8 +80,8 @@ def process_training_dir(trainingdir, m):
 def save_model(model, model_name):
     model.save_weights('{}-weights.h5'.format(model_name))
     model.save('{}-model.h5'.format(model_name))
-    with open('{}.json'.format(model_name), 'w') as outfile:
-        json.dump(model.to_json(), outfile)
+    # with open('{}.json'.format(model_name), 'w') as outfile:
+    #     json.dump(model.to_json(), outfile)
 
 def characterize_steering_distribution(y_steering, generator):
     turning = []; straight = []
@@ -142,45 +142,29 @@ def main_multi_input_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
     # Convert training dataframe into images and labels arrays
-    # Training data generator with random shear and random brightness
     start_time = time.time()
     # Start of MODEL Definition
-    m1 = DAVE2Model()
-    m2 = DAVE2Model()
     m3 = DAVE2Model()
-    model1 = m1.define_model()
-    model2 = m2.define_model()
     model3 = m3.define_multi_input_model_BeamNG([150, 200, 3])
     dirlist = [0,1,2]
     generator = DatasetGenerator(dirlist, batch_size=10000, dim=(32,32,32), n_channels=1,
                  feature="steering", shuffle=False)
     # 2D output
     if X is None and X_kph is None and y_all is None:
-        X, X_kph, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output_and_multi_input(m1)
+        X, X_kph, y_all, y_steering, y_throttle = generator.process_all_training_dirs_with_2D_output_and_multi_input(m3)
     print("dataset size: {} output size: {}".format(X.shape, y_all.shape))
     print("time to load dataset: {}".format(time.time() - start_time))
     print("X.shape", X.shape)
     print("X_kph.shape", X_kph.shape)
     print("y_all.shape", y_all.shape)
 
-
     BATCH_SIZE = 32
     NB_EPOCH = 20
 
     # Train steering
     it = "comparison100K-PIDcontrolset-2"
-    # model1_name = 'BeamNGmodel-racetracksteering-{}'.format(it)
-    # model2_name = 'BeamNGmodel-racetrackthrottle-{}'.format(it)
     model3_name = 'BeamNGmodel-racetrack-multiinput-dualoutput-{}'.format(it)
-    # model1.fit(x=X, y=y_steering, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    # save_model(model1, model1_name)
-    # print("Finished steering model")
-    # # delete the previous model so that you don't max out the memory
-    # del model1
-    # model2.fit(x=[X, y_steering, y_throttle], y=y_throttle, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
-    # save_model(model2, model2_name)
-    # print("Finished throttle model")
-    # del model2
+
     model3.fit(x=[X, X_kph], y=y_all, batch_size=BATCH_SIZE, epochs=NB_EPOCH)
     save_model(model3, model3_name)
     print("Finished multi-input, dual-output model")
@@ -192,20 +176,12 @@ def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
     start_time = time.time()
-    # Start of MODEL Definition
-    model = DAVE2v1(input_shape=(150,200)) #DAVE2PytorchModel() #
+    model = DAVE2v3(input_shape=(135,240)) #DAVE2PytorchModel() #
     print(model)
     BATCH_SIZE = 64
     NB_EPOCH = 50
-    # turn np.array to pytorch Tensor
-    # if X is None and X_kph is None and y_all is None:
-    #     X, y_steering = generator.process_all_training_dirs_pytorch() #process_first_half_of_dataset_for_pytorch()
-    # X = torch.from_numpy(X).permute(0,3,1,2).float()/255.0
-    # y_steering = torch.from_numpy(y_steering).float()/255.0
-    # X = torch.as_tensor(X).permute(0,3,1,2).float()/255.0 #, device=torch.device('cuda'))
-    # y_steering = torch.as_tensor(y_steering).float()/255.0 #, device=torch.device('cuda'))
-    # dataset = DataSequence(training_directory, transform=Compose([ToTensor()]))
-    dataset = MultiDirectoryDataSequence("H:/BeamNG_DAVE2_racetracks_all/PID/", transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
+
+    dataset = MultiDirectoryDataSequence("H:/BeamNG_DeepBillboard_dataset2/", image_size=(model.input_shape[::-1]), transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
 
     print("Retrieving output distribution....")
     print("Moments of distribution:", dataset.get_outputs_distribution())
@@ -216,8 +192,7 @@ def main_pytorch_model():
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
     print("time to load dataset: {}".format(time.time() - start_time))
 
-    # train model
-    iteration = 'dave2v1-lr1e4-50epoch-batch64-lossMSE'
+    iteration = f'{model._get_name()}-lr1e4-{NB_EPOCH}epoch-batch{BATCH_SIZE}-lossMSE-25Ksamples'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
@@ -255,15 +230,16 @@ def main_pytorch_model():
             # if len(running_loss) > 10:
             #     running_loss[-10:]
         print(f"Finished {epoch=}")
-        print(f"Saving model to H:/GitHub/DAVE2-Keras/test-{iteration}-model-epoch-{epoch}.pt")
-        torch.save(model, f'H:/GitHub/DAVE2-Keras/test-{iteration}-model-epoch-{epoch}.pt')
+        model_name = f"H:/GitHub/DAVE2-Keras/model-{iteration}-epoch{epoch}.pt"
+        print(f"Saving model to {model_name}")
+        torch.save(model, model_name)
     print('Finished Training')
 
     # save model
     # torch.save(model.state_dict(), f'H:/GitHub/DAVE2-Keras/test{iteration}-weights.pt')
-    torch.save(model, f'H:/GitHub/DAVE2-Keras/test{iteration}-model.pt')
-    print("Finished dual model")
-
+    model_name = f'H:/GitHub/DAVE2-Keras/model-{iteration}.pt'
+    torch.save(model, model_name)
+    print(f"Saving model to {model_name}")
     print("All done :)")
     print("Time to train: {}".format(time.time() - start_time))
 

@@ -23,8 +23,9 @@ import PIL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda
+from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda, Normalize
 from scipy.stats import truncnorm
+import matplotlib.pyplot as plt
 
 class DAVE2PytorchModel(nn.Module):
     def __init__(self):
@@ -147,6 +148,16 @@ class DAVE2v1(nn.Module):
     def load(self, path="test-model.pt"):
         return torch.load(path)
 
+    # @classmethod
+    # def process_image(self, image, transform=Compose([ToTensor()])):
+    def process_image(self, image, transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])):
+        # image = image.resize(self.input_shape[::-1])
+        # plt.title("resized img")
+        # plt.imshow(image)
+        # plt.pause(0.01)
+        image = transform(np.asarray(image))[None]
+        return image
+
 # based on https://github.com/jacobgil/keras-steering-angle-visualizations
 # Docs for Convolution2D: https://faroit.com/keras-docs/1.2.2/layers/convolutional/#convolution2d
 class DAVE2v2(nn.Module):
@@ -177,7 +188,7 @@ class DAVE2v2(nn.Module):
             weights = truncnorm.rvs(-2.0, 2.0, size=m.weight.shape)
             # print(f"{weights=}")
             # print(f"{weights.shape=}")
-            m.weight.data = torch.from_numpy(weights).float()
+            m.weight.data = torch.from_numpy(weights).float() / 10
             torch.nn.init.zeros_(m.bias)
 
     def forward(self, x):
@@ -199,12 +210,20 @@ class DAVE2v2(nn.Module):
         x = self.lin3(x)
         x = F.relu(x)
         x = self.lin4(x)
-        # x = torch.tanh(x)
-        x = 2 * torch.atan(x)
+        x = torch.tanh(x)
+        # x = 2 * torch.atan(x)
         return x
 
     def load(self, path="test-model.pt"):
         return torch.load(path)
+
+    def process_image(self, image, transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])):
+        image = image.resize(self.input_shape[::-1])
+        # plt.title("resized img")
+        # plt.imshow(image)
+        # plt.pause(0.01)
+        image = transform(np.asarray(image))[None]
+        return image
 
 # based on https://github.com/navoshta/behavioral-cloning
 class DAVE2v3(nn.Module):
@@ -213,12 +232,12 @@ class DAVE2v3(nn.Module):
         self.input_shape = input_shape
 
         self.conv1 = nn.Conv2d(3, 16, 3, stride=3)
-        self.pool1 = nn.MaxPool2d(kernel_size=(2,2))
+        self.pool1 = nn.MaxPool2d(kernel_size=(2,2), padding=1)
         # torch.nn.MaxPool2d(kernel_size, stride=None, padding=0, dilation=1, return_indices=False, ceil_mode=False)
         self.conv2 = nn.Conv2d(16, 32, 3, stride=3)
-        self.pool2 = nn.MaxPool2d(kernel_size=(2, 2))
+        self.pool2 = nn.MaxPool2d(kernel_size=(2, 2), padding=1)
         self.conv3 = nn.Conv2d(32, 64, 3, stride=3)
-        self.pool3 = nn.MaxPool2d(kernel_size=(2, 2))
+        self.pool3 = nn.MaxPool2d(kernel_size=(2, 2), padding=1)
 
         size = np.product(nn.Sequential(self.conv1, self.pool1, self.conv2, self.pool2, self.conv3, self.pool3)(
             torch.zeros(1, 3, *self.input_shape)).shape)
@@ -267,13 +286,16 @@ class Epoch(nn.Module):
         super().__init__()
         self.input_shape = input_shape
 
-        self.conv1 = nn.Conv2d(3, 32, 3, stride=3)
-        self.conv2 = nn.Conv2d(32, 64, 3, stride=3)
-        self.conv3 = nn.Conv2d(64, 128, 3, stride=3)
+        # self.conv1 = nn.Conv2d(3, 32, 3, stride=3, padding='same')
+        # self.conv2 = nn.Conv2d(32, 64, 3, stride=3, padding='same')
+        # self.conv3 = nn.Conv2d(64, 128, 3, stride=3, padding='same')
+        self.conv1 = nn.Conv2d(3, 32, 3, padding='same')
+        self.conv2 = nn.Conv2d(32, 64, 3, padding='same')
+        self.conv3 = nn.Conv2d(64, 128, 3, padding='same')
         self.dropout1 = nn.Dropout(p=0.25)
         self.maxpool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
-        size = np.product(nn.Sequential(self.conv1, self.conv2, self.conv3)(
+        size = np.product(nn.Sequential(self.conv1, self.maxpool1, self.conv2, self.maxpool1, self.conv3, self.maxpool1 )(
             torch.zeros(1, 3, *self.input_shape)).shape)
 
         self.lin1 = nn.Linear(in_features=size, out_features=1024, bias=True)
