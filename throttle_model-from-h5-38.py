@@ -23,6 +23,7 @@ from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataS
 import time
 
 from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3, Epoch
+from VAEbasic import VAEbasic
 
 import torch
 import torch.nn as nn
@@ -176,29 +177,37 @@ def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
     start_time = time.time()
-    model = DAVE2v3(input_shape=(135,240)) #DAVE2PytorchModel() #
-    print(model)
+    # model = DAVE2v2(input_shape=(135,240))
+    model = VAEbasic(3, 30, input_shape=(135,240))
+    # print(f"old model:{model}")
+    # model = DAVE2PytorchModel(input_shape=(225,400))
+    # model = DAVE2PytorchModel(input_shape=(135,240))
+    # print(f"new model:{model}")
     BATCH_SIZE = 64
-    NB_EPOCH = 50
-
-    dataset = MultiDirectoryDataSequence("H:/BeamNG_DeepBillboard_dataset2/", image_size=(model.input_shape[::-1]), transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
+    NB_EPOCH = 100
+    lr = 1e-4
+    robustification = True
+    noise_level = 20
+    dataset = MultiDirectoryDataSequence("H:/BeamNG_DeepBillboard_dataset2/", image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
+                                         robustification=robustification, noise_level=noise_level) #, Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
 
     print("Retrieving output distribution....")
     print("Moments of distribution:", dataset.get_outputs_distribution())
-
+    print("Total samples:", dataset.get_total_samples())
     def worker_init_fn(worker_id):
         np.random.seed(np.random.get_state()[1][0] + worker_id)
 
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
     print("time to load dataset: {}".format(time.time() - start_time))
 
-    iteration = f'{model._get_name()}-lr1e4-{NB_EPOCH}epoch-batch{BATCH_SIZE}-lossMSE-25Ksamples'
+    iteration = f'{model._get_name()}-lr1e4-{NB_EPOCH}epoch-batch{BATCH_SIZE}-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples-INDUSTRIALandHIROCHIandUTAH-135x240-noiseflipblur'
+    # iteration = "testdeletelater"
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
     model = model.to(device)
     # if loss doesnt level out after 20 epochs, either inc epochs or inc learning rate
-    optimizer = optim.Adam(model.parameters(), lr=1e-4) #, betas=(0.9, 0.999), eps=1e-08)
+    optimizer = optim.Adam(model.parameters(), lr=lr) #, betas=(0.9, 0.999), eps=1e-08)
     for epoch in range(NB_EPOCH):  # loop over the dataset multiple times
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
@@ -233,15 +242,39 @@ def main_pytorch_model():
         model_name = f"H:/GitHub/DAVE2-Keras/model-{iteration}-epoch{epoch}.pt"
         print(f"Saving model to {model_name}")
         torch.save(model, model_name)
+        # if loss < 0.002:
+        #     print(f"Loss at {loss}; quitting training...")
+        #     break
     print('Finished Training')
 
     # save model
     # torch.save(model.state_dict(), f'H:/GitHub/DAVE2-Keras/test{iteration}-weights.pt')
     model_name = f'H:/GitHub/DAVE2-Keras/model-{iteration}.pt'
     torch.save(model, model_name)
+
+    # delete models from previous epochs
+    print("Deleting models from previous epochs...")
+    for epoch in range(NB_EPOCH):
+        os.remove(f"H:/GitHub/DAVE2-Keras/model-{iteration}-epoch{epoch}.pt")
     print(f"Saving model to {model_name}")
     print("All done :)")
-    print("Time to train: {}".format(time.time() - start_time))
+    time_to_train=time.time() - start_time
+    print("Time to train: {}".format(time_to_train))
+    # save metainformation about training
+    with open(f'H:/GitHub/DAVE2-Keras/model-{iteration}-metainfo.txt', "w") as f:
+        f.write(f"{model_name=}\n"
+                f"total_samples={dataset.get_total_samples()}\n"
+                f"{NB_EPOCH=}\n"
+                f"{lr=}\n"
+                f"{BATCH_SIZE=}\n"
+                f"{optimizer=}\n"
+                f"final_loss={running_loss / logfreq}\n"
+                f"{device=}\n"
+                f"{robustification=}\n"
+                f"{noise_level=}\n"
+                f"dataset_moments={dataset.get_outputs_distribution()}\n"
+                f"{time_to_train=}\n"
+                f"dirs={dataset.get_directories()}")
 
 
 if __name__ == '__main__':

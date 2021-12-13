@@ -1,44 +1,29 @@
 import numpy as np
-import pandas as pd
-import cv2
-import matplotlib.image as mpimg
-import json
-
-import tensorflow as tf
-# from keras.models import Sequential
-# from keras.layers import Conv2D, MaxPooling2D, Dense, Dropout
-from tensorflow.keras import Model
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Conv2D, Flatten, Dense, MaxPooling2D, Dropout
-from tensorflow.keras.layers import Activation, Flatten, Lambda, Input, ELU
-from keras.optimizers import Adam
-from keras.utils import np_utils
-from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Conv2D, MaxPooling2D, Input, Dense, Flatten, concatenate
-
-import h5py
-import os
-from PIL import Image
-import PIL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda, Normalize
+from torchvision.transforms import Compose, ToPILImage, ToTensor
 from scipy.stats import truncnorm
-import matplotlib.pyplot as plt
+import cv2
 
+
+# uses a ton of dropout layers between dense layers
 class DAVE2PytorchModel(nn.Module):
-    def __init__(self):
+    def __init__(self, input_shape=(150, 200)):
         super().__init__()
-        self.input_shape = (150, 200)
+        self.input_shape = input_shape
         self.conv1 = nn.Conv2d(3, 24, 5, stride=2)
         self.conv2 = nn.Conv2d(24, 36, 5, stride=2)
         self.conv3 = nn.Conv2d(36, 48, 5, stride=2)
         self.conv4 = nn.Conv2d(48, 64, 3, stride=1)
         self.conv5 = nn.Conv2d(64, 64, 3, stride=1)
         self.dropout = nn.Dropout()
+
+        size = np.product(nn.Sequential(self.conv1, self.conv2, self.conv3, self.conv4, self.conv5)(
+            torch.zeros(1, 3, *self.input_shape)).shape)
+
         # self.flatten = nn.Flatten()
-        self.lin1 = nn.Linear(in_features=13824, out_features=100, bias=True)
+        self.lin1 = nn.Linear(in_features=size, out_features=100, bias=True)
         self.lin2 = nn.Linear(in_features=100, out_features=50, bias=True)
         self.lin3 = nn.Linear(in_features=50, out_features=10, bias=True)
         # self.lin4 = nn.Linear(in_features=10, out_features=2, bias=True)
@@ -79,10 +64,10 @@ class DAVE2PytorchModel(nn.Module):
         return torch.load(path)
 
     # process PIL image to Tensor
-    @classmethod
-    def process_image(cls, image, transform=Compose([ToTensor()])):
+    # @classmethod
+    def process_image(self, image, transform=Compose([ToTensor()])):
         # image = image.resize((self.input_shape[1], self.input_shape[0]), Image.ANTIALIAS)
-        # image = cv2.resize(image, (200,150))
+        # image = cv2.resize(image, self.input_shape)
         # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
         # image = np.array(image)[None]#.reshape(1, self.input_shape[0], self.input_shape[1], 3)
         # use transpose instead of reshape -- reshape doesn't change representation in memory
@@ -91,9 +76,10 @@ class DAVE2PytorchModel(nn.Module):
         # if transform:
         # image = torch.from_numpy(image)/ 255.0 #127.5-1.0 #transform(image)
         # print(f"{image.shape=}")
-        image = transform(image)[None]
+        image = transform(np.asarray(image))[None]
         return image  # .permute(0,3,1,2)#(2, 1, 0)
 
+# Original model
 # based on https://github.com/0bserver07/Nvidia-Autopilot-Keras
 class DAVE2v1(nn.Module):
     def __init__(self, input_shape=(100, 100)):
@@ -123,6 +109,7 @@ class DAVE2v1(nn.Module):
             torch.nn.init.zeros_(m.bias)
 
     def forward(self, x):
+        x = self.bn1(x)
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -150,15 +137,12 @@ class DAVE2v1(nn.Module):
 
     # @classmethod
     # def process_image(self, image, transform=Compose([ToTensor()])):
-    def process_image(self, image, transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])):
-        # image = image.resize(self.input_shape[::-1])
-        # plt.title("resized img")
-        # plt.imshow(image)
-        # plt.pause(0.01)
+    def process_image(self, image, transform=Compose([ToTensor()])):
         image = transform(np.asarray(image))[None]
         return image
 
 # based on https://github.com/jacobgil/keras-steering-angle-visualizations
+# init weights using truncnorm
 # Docs for Convolution2D: https://faroit.com/keras-docs/1.2.2/layers/convolutional/#convolution2d
 class DAVE2v2(nn.Module):
     def __init__(self, input_shape=(100, 100)):
@@ -217,15 +201,14 @@ class DAVE2v2(nn.Module):
     def load(self, path="test-model.pt"):
         return torch.load(path)
 
-    def process_image(self, image, transform=Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])):
-        image = image.resize(self.input_shape[::-1])
-        # plt.title("resized img")
-        # plt.imshow(image)
-        # plt.pause(0.01)
+    def process_image(self, image, transform=Compose([ToTensor()])):
+        # image = image.resize(self.input_shape[::-1])
         image = transform(np.asarray(image))[None]
         return image
 
+
 # based on https://github.com/navoshta/behavioral-cloning
+# adds pooling layers between each convolutional layer
 class DAVE2v3(nn.Module):
     def __init__(self, input_shape=(100, 100)):
         super().__init__()
@@ -279,6 +262,10 @@ class DAVE2v3(nn.Module):
 
     def load(self, path="test-model.pt"):
         return torch.load(path)
+
+    def process_image(self, image, transform=Compose([ToTensor()])):
+        image = transform(np.asarray(image))[None]
+        return image
 
 # based on https://github.com/udacity/self-driving-car/tree/master/steering-models/community-models/cg23
 class Epoch(nn.Module):
@@ -334,6 +321,9 @@ class Epoch(nn.Module):
     def load(self, path="test-model.pt"):
         return torch.load(path)
 
+    def process_image(self, image, transform=Compose([ToTensor()])):
+        image = transform(np.asarray(image))[None]
+        return image
 
 class DAVE2extra(nn.Module):
     def __init__(self):

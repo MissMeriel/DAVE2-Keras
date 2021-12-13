@@ -3,6 +3,7 @@ import keras
 import os, cv2, csv
 from DAVE2 import DAVE2Model
 from DAVE2pytorch import DAVE2PytorchModel
+import kornia
 
 from PIL import Image
 import copy
@@ -15,6 +16,7 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import imshow
+import random
 
 from torchvision.transforms import ToTensor, functional as transforms
 
@@ -91,7 +93,7 @@ class DatasetGenerator(keras.utils.Sequence):
         dir1_files = os.listdir(dir_filename)
         dir1_files.remove("data.csv")
         return len(dir1_files)
-
+    
     # assumes training directory has 10,000 samples
     # resulting size: (10000, 150, 200, 3)
     def process_training_dir(self, trainingdir, m):
@@ -434,7 +436,6 @@ class DataSequence(data.Dataset):
         img_name = self.image_paths[idx]
         image = sio.imread(img_name)
 
-        # print(f"{image=}")
         df_index = self.df.index[self.df['filename'] == img_name.name]
         y_thro = self.df.loc[df_index, 'throttle_input'].array[0]
         y_steer = self.df.loc[df_index, 'steering_input'].array[0]
@@ -462,7 +463,7 @@ class DataSequence(data.Dataset):
         return sample
 
 class MultiDirectoryDataSequence(data.Dataset):
-    def __init__(self, root, image_size=(100,100), transform=None):
+    def __init__(self, root, image_size=(100,100), transform=None, robustification=False, noise_level=10):
         """
         Args:
             root_dir (string): Directory with all the images.
@@ -471,21 +472,24 @@ class MultiDirectoryDataSequence(data.Dataset):
         """
         self.root = root
         self.transform = transform
-        print(self.transform)
         self.size = 0
         self.image_size = image_size
         image_paths_hashmap = {}
         all_image_paths = []
         self.dfs_hashmap = {}
+        self.dirs = []
         for p in Path(root).iterdir():
-            if "100K" not in str(p):
+            if p.is_dir() and "_YES" in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
+                self.dirs.append("{}/{}".format(p.parent,p.stem.replace("_YES", "")))
                 image_paths = []
-                self.dfs_hashmap[f"{p}"] = pd.read_csv(f"{p}/data.csv")
+                try:
+                    self.dfs_hashmap[f"{p}"] = pd.read_csv(f"{p}/data.csv")
+                except FileNotFoundError as e:
+                    print(e, "\nNo data.csv in directory")
+                    continue
                 for pp in Path(p).iterdir():
-                    if pp.suffix.lower() in [".jpg", ".png", ".jpeg", ".bmp"]:
+                    if pp.suffix.lower() in [".jpg", ".png", ".jpeg", ".bmp"] and "collection_trajectory" not in pp.name:
                         image_paths.append(pp)
-                        # print(f"{pp=}")
-                        # print(f"{p=}\n")
                         all_image_paths.append(pp)
                 image_paths.sort(key=lambda p: int(stripleftchars(p.stem)))
                 image_paths_hashmap[p] = copy.deepcopy(image_paths)
@@ -493,10 +497,17 @@ class MultiDirectoryDataSequence(data.Dataset):
         print("Finished intaking image paths!!")
         self.image_paths_hashmap = image_paths_hashmap
         self.all_image_paths = all_image_paths
-        # print(f"{self.image_paths=}")
         # self.df = pd.read_csv(f"{self.root}/data.csv")
         self.cache = {}
+        self.robustification = robustification
+        self.noise_level = noise_level
 
+    def get_total_samples(self):
+        return self.size
+
+    def get_directories(self):
+        return self.dirs
+        
     def __len__(self):
         return len(self.all_image_paths)
 
@@ -504,27 +515,41 @@ class MultiDirectoryDataSequence(data.Dataset):
         if idx in self.cache:
             return self.cache[idx]
         img_name = self.all_image_paths[idx]
-        # image = sio.imread(img_name)
         image = Image.open(img_name)
         image = image.resize(self.image_size)
-        # plt.imshow(image)
-        # plt.show()
-        # plt.pause(0.01)
-        # image = DAVE2PytorchModel.process_image(np.array(image))
-        # image = cv2.resize(np.array(image), (150,200))
-        # add a single dimension to the front of the matrix -- [...,None] inserts dimension in index 1
-        # image = np.array(image) #.reshape(1, self.input_shape[0], self.input_shape[1], 3)
-        # use transpose instead of reshape -- reshape doesn't change representation in memory
-        # image = image.transpose((2,0,1))
-        # ToTensor() normalizes data between 0-1 but torch.from_numppy just casts to Tensor
-        # image = torch.from_numpy(image)/255.0 #transform(image)
-        # image = transforms.to_tensor(image)
-        image = self.transform(image)
+        orig_image = self.transform(image)
         pathobj = Path(img_name)
+        # print(img_name)
         df = self.dfs_hashmap[f"{pathobj.parent}"]
         df_index = df.index[df['filename'] == img_name.name]
-        y_steer = df.loc[df_index, 'steering_input'].item()
+        orig_y_steer = df.loc[df_index, 'steering_input'].item()
         y_throttle = df.loc[df_index, 'throttle_input'].item()
+        y_steer = copy.deepcopy(orig_y_steer)
+        if self.robustification:
+            # add noise
+            image = copy.deepcopy(orig_image)
+            image = torch.clamp(image + torch.randn(*image.shape) / self.noise_level, 0, 1)
+            if random.random() > 0.5:
+                # flip image
+                # plt.imshow(image.permute(1,2,0))
+                # plt.pause(0.01)
+                image = torch.flip(image, (2,))
+                # plt.imshow(image.permute(1,2,0))
+                # plt.pause(0.01)
+                y_steer = -orig_y_steer
+            if random.random() > 0.5:
+                # blur
+                gauss = kornia.filters.GaussianBlur2d((5, 5), (5.5, 5.5))
+                image = gauss(image[None])[0]
+                # image = kornia.filters.blur_pool2d(image[None], 3)[0]
+                # image = kornia.filters.max_blur_pool2d(image[None], 3, ceil_mode=True)[0]
+                # image = kornia.filters.median_blur(image, (3, 3))
+                # image = kornia.filters.median_blur(image, (10, 10))
+                # image = kornia.filters.box_blur(image, (3, 3))
+                # image = kornia.filters.box_blur(image, (5, 5))
+                # image = kornia.resize(image, image.shape[2:])
+                # plt.imshow(image.permute(1,2,0))
+                # plt.pause(0.01)
         # vvvvvv uncomment below for value-image debugging vvvvvv
         # plt.title(f"{img_name}\nsteering_input={y_steer.array[0]}", fontsize=7)
         # plt.imshow(image)
@@ -534,7 +559,8 @@ class MultiDirectoryDataSequence(data.Dataset):
         # image = self.transform(image).float()
         # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
         sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
-        self.cache[idx] = sample
+        orig_sample = {"image": orig_image, "steering_input": torch.FloatTensor([orig_y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([orig_y_steer, y_throttle])}
+        self.cache[idx] = orig_sample
         return sample
 
     def get_outputs_distribution(self):
