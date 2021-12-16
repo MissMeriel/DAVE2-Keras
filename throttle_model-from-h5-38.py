@@ -1,4 +1,5 @@
 import numpy as np
+import argparse
 import pandas as pd
 import cv2
 import matplotlib.image as mpimg
@@ -173,6 +174,12 @@ def main_multi_input_model():
     print("All done :)")
     print("Time to train: {}".format(time.time() - start_time))
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', help='parent directory of training dataset')
+    args = parser.parse_args()
+    return args
+
 def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
@@ -188,7 +195,9 @@ def main_pytorch_model():
     lr = 1e-4
     robustification = True
     noise_level = 20
-    dataset = MultiDirectoryDataSequence("H:/BeamNG_DeepBillboard_dataset2/", image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
+    args = parse_arguments()
+    print(args)
+    dataset = MultiDirectoryDataSequence(args.dataset, image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
                                          robustification=robustification, noise_level=noise_level) #, Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
 
     print("Retrieving output distribution....")

@@ -18,7 +18,8 @@ from matplotlib import pyplot as plt
 from matplotlib.pyplot import imshow
 import random
 
-from torchvision.transforms import ToTensor, functional as transforms
+from torchvision.transforms import Compose, ToTensor, PILToTensor, functional as transforms
+
 
 class DatasetGenerator(keras.utils.Sequence):
     'Generates data for Keras'
@@ -359,8 +360,8 @@ class DatasetGenerator(keras.utils.Sequence):
         new_rootdir = 'H:/BeamNG_DAVE2_racetracks_all/restruct2/'
         dirs = os.listdir(rootdir)
         sizes = [self.get_dataset_size(rootdir + d) for d in dirs]
-        print(f"{dirs=}")
-        print(f"{sizes=}")
+        # print(f"{dirs=}")
+        # print(f"{sizes=}")
         adjusted_index = 0
         main_df = pd.DataFrame()
         with open(f"{new_rootdir}/data.csv", 'w') as f:
@@ -479,8 +480,8 @@ class MultiDirectoryDataSequence(data.Dataset):
         self.dfs_hashmap = {}
         self.dirs = []
         for p in Path(root).iterdir():
-            if p.is_dir() and "_YES" in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
-                self.dirs.append("{}/{}".format(p.parent,p.stem.replace("_YES", "")))
+            if p.is_dir() and "_YESM" in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
+                self.dirs.append("{}/{}".format(p.parent,p.stem.replace("_YESM", "")))
                 image_paths = []
                 try:
                     self.dfs_hashmap[f"{p}"] = pd.read_csv(f"{p}/data.csv")
@@ -494,7 +495,7 @@ class MultiDirectoryDataSequence(data.Dataset):
                 image_paths.sort(key=lambda p: int(stripleftchars(p.stem)))
                 image_paths_hashmap[p] = copy.deepcopy(image_paths)
                 self.size += len(image_paths)
-        print("Finished intaking image paths!!")
+        print("Finished intaking image paths!")
         self.image_paths_hashmap = image_paths_hashmap
         self.all_image_paths = all_image_paths
         # self.df = pd.read_csv(f"{self.root}/data.csv")
@@ -550,14 +551,18 @@ class MultiDirectoryDataSequence(data.Dataset):
                 # image = kornia.resize(image, image.shape[2:])
                 # plt.imshow(image.permute(1,2,0))
                 # plt.pause(0.01)
+        else:
+            # if type(image) == Image.Image:
+            t = Compose([ToTensor()])
+            image = t(image).float()
+            # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
+
         # vvvvvv uncomment below for value-image debugging vvvvvv
         # plt.title(f"{img_name}\nsteering_input={y_steer.array[0]}", fontsize=7)
         # plt.imshow(image)
         # plt.show()
         # plt.pause(0.01)
-        # if self.transform:
-        # image = self.transform(image).float()
-        # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
+
         sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
         orig_sample = {"image": orig_image, "steering_input": torch.FloatTensor([orig_y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([orig_y_steer, y_throttle])}
         self.cache[idx] = orig_sample
@@ -568,9 +573,9 @@ class MultiDirectoryDataSequence(data.Dataset):
         for key in self.dfs_hashmap.keys():
             df = self.dfs_hashmap[key]
             arr = df['steering_input'].to_numpy()
-            print(f"{len(arr)=}")
+            # print("len(arr)=", len(arr))
             all_outputs = np.concatenate((all_outputs, arr), axis=0)
-            print(f"Retrieved dataframe {key=}")
+            # print(f"Retrieved dataframe {key=}")
         all_outputs = np.array(all_outputs)
         moments = self.get_distribution_moments(all_outputs)
         return moments

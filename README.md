@@ -1,8 +1,7 @@
 ##To Run Training:
 
 ```python
-python throttle_model-from-h5-38.py
-
+python model-from-dataset.py <path/to/dataset/parentdirectory>
 ```
 
 ## Goal: 

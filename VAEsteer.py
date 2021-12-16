@@ -1,26 +1,20 @@
 import numpy as np
-import os
-import re
 import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.modules.linear import Linear
 import torch.optim as optim
-import torch.utils.data as data
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
 
 from pathlib import Path
-from torchvision.datasets.folder import default_loader
 from torchvision.utils import make_grid, save_image
 from typing import List
 
 # meriels dependencies
 from DatasetGenerator import MultiDirectoryDataSequence
 from torch.utils.data import DataLoader, TensorDataset
-from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda, Normalize
+from torchvision.transforms import Compose, ToTensor, Resize, Lambda, Normalize
 from torch.autograd import Variable
+import argparse
 
 NAME = "vae"
 Path("models").mkdir(exist_ok=True, parents=True)
@@ -47,60 +41,67 @@ class Model(nn.Module):
         # Build Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 8, 3, 2),
-            nn.BatchNorm2d(8),
+            # nn.BatchNorm2d(8),
             nn.ELU(),
             nn.Conv2d(8, 16, 3, 2),
-            nn.BatchNorm2d(16),
+            # nn.BatchNorm2d(16),
             nn.ELU(),
             nn.Conv2d(16, 32, 3, 2),
-            nn.BatchNorm2d(32),
+            # nn.BatchNorm2d(32),
             nn.ELU(),
             nn.Conv2d(32, 64, 3, 2),
-            nn.BatchNorm2d(64),
+            # nn.BatchNorm2d(64),
             nn.ELU(),
             nn.Conv2d(64, 128, 3, 2),
-            nn.BatchNorm2d(128),
+            # nn.BatchNorm2d(128),
             nn.ELU(),
             nn.Conv2d(128, 256, 3, 2),
-            nn.BatchNorm2d(256),
+            # nn.BatchNorm2d(256),
             nn.ELU(),
         )
         encoder_output_shape = self.encoder(torch.ones(1, 3, self.input_shape[0], self.input_shape[1])).shape[1:]
         encoder_output_size = np.product(encoder_output_shape)
         self.fc_mu = nn.Linear(encoder_output_size, latent_dim)
         self.fc_var = nn.Linear(encoder_output_size, latent_dim)
-        print(encoder_output_shape, encoder_output_size)
+        print(f"\n{encoder_output_shape=}\n{encoder_output_size=}")
 
         # Build Decoder
         self.decoder = nn.Sequential(
             nn.Linear(self.latent_dim, encoder_output_size),
             Reshape((-1, *encoder_output_shape)),
-            nn.ConvTranspose2d(256, 128, 3, 2, 0, padding=(0, 1)),
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(256, 128, 3, 2, padding=(0,0)),#, output_padding=(1,0)), #0, padding=(1)),
+            # nn.BatchNorm2d(128),
             nn.ELU(),
-            nn.ConvTranspose2d(128, 64, 3, 2, 0, padding=(0, 1)),
-            nn.BatchNorm2d(64),
+            nn.ConvTranspose2d(128, 64, 3, 2, 0), #, padding=(0, 1)),
+            # nn.BatchNorm2d(64),
             nn.ELU(),
-            nn.ConvTranspose2d(64, 32, 3, 2, 0, padding=(1, 0)),
-            nn.BatchNorm2d(32),
+            nn.ConvTranspose2d(64, 64, 4, 1, padding=(1, 0)),  # , padding=(0, 1)),
+            # nn.BatchNorm2d(64),
+            nn.ELU(),
+            nn.ConvTranspose2d(64, 32, 3, 2, 0), #, padding=(1, 0)),
+            # nn.BatchNorm2d(32),
             nn.ELU(),
             # nn.ConvTranspose2d(32, 32, 2, 1),
             # nn.BatchNorm2d(32),
             # nn.ELU(),
-            nn.ConvTranspose2d(32, 16, 3, 2),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(32, 16, 3, 2, padding=(1,0)),
+            # nn.BatchNorm2d(16),
             nn.ELU(),
             nn.ConvTranspose2d(16, 8, 3, 2),
-            nn.BatchNorm2d(8),
+            # nn.BatchNorm2d(8),
             nn.ELU(),
-            nn.ConvTranspose2d(8, 3, 3, 2, 0, (0, 1)),
-            nn.BatchNorm2d(3),
+            nn.ConvTranspose2d(8, 8, 3, 1, padding=(1,0)),
+            # nn.BatchNorm2d(8),
+            nn.ELU(),
+            nn.ConvTranspose2d(8, 3, 3, 2, padding=(0,1)),
+            # nn.BatchNorm2d(3),
             # nn.ELU(),
-            # nn.ConvTranspose2d(1, 1, 2, 1),
-            # nn.BatchNorm2d(1),
+            # nn.ConvTranspose2d(3, 3, 1, 1, padding=(0,1)),
+            # nn.BatchNorm2d(3),
             nn.Sigmoid(),
         )
-        print(self.decoder(torch.ones(1, self.latent_dim)).shape)
+        print("decoder shape =", self.decoder(torch.ones(1, self.latent_dim)).shape)
+        print("decoder size =", np.product(encoder_output_shape))
 
     def encode(self, x: torch.Tensor) -> List[torch.Tensor]:
         # x = x.flatten(1)
@@ -115,6 +116,7 @@ class Model(nn.Module):
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         y = self.decoder(z)
+        y = y[...,:-1]
         # y = y.view(-1, 1, 200, 200)
         y = y.view(-1, 3, self.input_shape[0], self.input_shape[1])
         return y
@@ -158,12 +160,11 @@ def loss_fn(recons, x, mu, log_var, kld_weight):
     return loss, recons_loss, kld_loss
 
 
-def train(
-    model, data_loader, num_epochs=300, device=torch.device("cpu"), sample_interval=200
-):
-    optimizer = optim.Adam(model.parameters(), lr=0.0005)
+def train(model, data_loader, num_epochs=300, device=torch.device("cpu"), sample_interval=200, lr=0.0005):
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     # lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
-    lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 1.0)
+    #TODO: adjust gamma if it plateaus at some values
+    lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     # kld_weight = 0.01 * data_loader.batch_size / len(data_loader.dataset)
     kld_weight = data_loader.batch_size / len(data_loader.dataset)
     all_losses = []
@@ -187,42 +188,55 @@ def train(
             loss.backward()
             losses.append(loss.item())
             optimizer.step()
-            if (i % 10) == 0:
+            if (i % 100) == 0:
                 iter_end_t = time.time()
+                # epoch, samples, epoch elapsed time,
                 print(
-                    f"{epoch} {i} [{iter_end_t - epoch_start_t:.4f}]: {losses[-1]:.4f} {np.mean(losses[-10:]):.4f} {rloss.item():.4f} {kloss.item():.4f}"
+                    f"{epoch} {i} [{iter_end_t - epoch_start_t:.1f}]: {losses[-1]:.4f} {np.mean(losses[-10:]):.4f} {rloss.item():.4f} {kloss.item():.4f}"
                 )
             batches_done = (epoch - 1) * len(data_loader) + i
-            if batches_done % sample_interval == 0:
-                model = model.eval()
-                save_image(
-                    model.sample(25).detach().cpu(),
-                    f"samples_{NAME}/iter/%d.png" % batches_done,
-                    nrow=5,
-                )
-                model = model.train()
+            # if batches_done % sample_interval == 0:
+                # model = model.eval()
+                # save_image(
+                #     model.sample(25).detach().cpu(),
+                #     f"samples_{NAME}/iter/%d.png" % batches_done,
+                #     nrow=5,
+                # )
+                # model = model.train()
         epoch_end_t = time.time()
         print(f"epoch time: {epoch_end_t - epoch_start_t} seconds")
         print(f"total time: {epoch_end_t - start_t} seconds")
         all_losses.append(losses)
         lr_scheduler.step()
         model = model.eval()
+        save_image(
+            model.sample(25).detach().cpu(),
+            f"samples_{NAME}/iter/%d.png" % batches_done,
+            nrow=5,
+        )
         grid = make_grid(model.decode(z).detach().cpu(), 10)
         save_image(grid, f"samples_{NAME}/epoch/{epoch}.png")
     end_t = time.time()
     print(f"total time: {end_t - start_t} seconds")
     return model
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', help='parent directory of training dataset')
+    args = parser.parse_args()
+    return args
 
 def main():
+    args = parse_arguments()
+    print(args)
     start_time = time.time()
-    BATCH_SIZE = 1
+    BATCH_SIZE = 64
     NB_EPOCH = 100
     lr = 1e-4
-    robustification = True
+    robustification = False
     noise_level = 20
     model = Model(input_shape=(135,240), latent_dim=512)
-    dataset = MultiDirectoryDataSequence("H:/BeamNG_DeepBillboard_dataset2/", image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
+    dataset = MultiDirectoryDataSequence(args.dataset, image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
                                          robustification=robustification, noise_level=noise_level) #, Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
 
     print("Retrieving output distribution....")
@@ -238,10 +252,10 @@ def main():
     print("Using device:", device)
 
     model = model.to(device)
-    model = train(model, trainloader, device=device)
+    model = train(model, trainloader, device=device, num_epochs=NB_EPOCH, sample_interval=20000, lr=lr)
     model = model.to(torch.device("cpu"))
     model = model.eval()
-    model_filename = "DELETELATER-VAEsteer.pt"
+    model_filename = "VAEsteer-4thattempt-nobatchnorm.pt"
     torch.save(model, model_filename)
 
 
