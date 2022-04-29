@@ -479,9 +479,10 @@ class MultiDirectoryDataSequence(data.Dataset):
         all_image_paths = []
         self.dfs_hashmap = {}
         self.dirs = []
+        marker = "_YES"
         for p in Path(root).iterdir():
-            if p.is_dir() and "_YESM" in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
-                self.dirs.append("{}/{}".format(p.parent,p.stem.replace("_YESM", "")))
+            if p.is_dir() and marker in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
+                self.dirs.append("{}/{}".format(p.parent,p.stem.replace(marker, "")))
                 image_paths = []
                 try:
                     self.dfs_hashmap[f"{p}"] = pd.read_csv(f"{p}/data.csv")

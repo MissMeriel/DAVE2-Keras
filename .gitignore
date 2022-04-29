@@ -1,8 +1,8 @@
 *.json
 *.pyc
 */*.pyc
-__pycache__/
+__pycache__
+__pycache__\*
 samples_vae/
 *.h5
-*.pt
 .idea/

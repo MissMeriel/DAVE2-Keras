@@ -184,8 +184,8 @@ def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
     start_time = time.time()
-    # model = DAVE2v2(input_shape=(135,240))
-    model = VAEbasic(3, 30, input_shape=(135,240))
+    model = DAVE2v1(input_shape=(135,240))
+    # model = VAEbasic(3, 30, input_shape=(135,240))
     # print(f"old model:{model}")
     # model = DAVE2PytorchModel(input_shape=(225,400))
     # model = DAVE2PytorchModel(input_shape=(135,240))
