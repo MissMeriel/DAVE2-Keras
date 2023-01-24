@@ -4,6 +4,11 @@
 python model-from-dataset.py <path/to/dataset/parentdirectory>
 ```
 
+```python
+pip3 install torch==1.9.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu111
+```
+
+
 ## Goal: 
 The goal of this project was to implement an end-to-end neural network, for behavioral cloning of a simulated car driver. The input to the network are timestamped camera images (left, right , and center mounted).  The output of the network is a single floating point number, representing the steering angle of the car (for simplicity, other car controls e.g. throttle and brake were assumed constants and steering angle was kept in the range of -1 to 1). A Unity engine based driving simulator was used for training and testing the network. This simulator was provided by Udacity as part of the Self Driving Car nanodegree program. In case you want to try it out: [Link to download the linux driving simulator.](https://d17h27t6h515a5.cloudfront.net/topher/2016/November/5831f0f7_simulator-linux/simulator-linux.zip)
 
