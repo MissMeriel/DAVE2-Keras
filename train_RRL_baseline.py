@@ -62,7 +62,7 @@ def train_baseline_model():
 
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
     print("Processed datapoint paths in {0:.3g} sec.".format(time.time() - start_time))
-    segment = args.RRL_dir.split("-")[0].replace("RLtrain", "")
+    segment = args.RRL_dir.split("/")[-1].split("-")[0].replace("RLtrain", "")
     iteration = f'{model._get_name()}-baseplusRRL-{args.effect}{input_shape[0]}x{input_shape[1]}-{segment}-lr1e4-{NB_EPOCH}epoch-batch{BATCH_SIZE}-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples-INDUSTRIALandHIROCHIandUTAH-135x240-noiseflipblur'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
