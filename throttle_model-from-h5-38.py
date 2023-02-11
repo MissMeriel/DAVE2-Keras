@@ -184,17 +184,18 @@ def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
     start_time = time.time()
-    model = DAVE2v1(input_shape=(135,240))
-    # model = VAEbasic(3, 30, input_shape=(135,240))
-    # print(f"old model:{model}")
+    # model = DAVE2v1(input_shape=(135,240))
+    # model = VAEbasic(3, 100, input_shape=(135,240))
     # model = DAVE2PytorchModel(input_shape=(225,400))
-    # model = DAVE2PytorchModel(input_shape=(135,240))
+    # model = DAVE2PytorchModel(input_shape=(67,120))
+    input_shape = (135, 240)
+    model = DAVE2v3(input_shape=input_shape)
     # print(f"new model:{model}")
     BATCH_SIZE = 64
     NB_EPOCH = 100
     lr = 1e-4
     robustification = True
-    noise_level = 20
+    noise_level = 15
     args = parse_arguments()
     print(args)
     dataset = MultiDirectoryDataSequence(args.dataset, image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
@@ -209,15 +210,16 @@ def main_pytorch_model():
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
     print("time to load dataset: {}".format(time.time() - start_time))
 
-    iteration = f'{model._get_name()}-lr1e4-{NB_EPOCH}epoch-batch{BATCH_SIZE}-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples-INDUSTRIALandHIROCHIandUTAH-135x240-noiseflipblur'
-    # iteration = "testdeletelater"
+    iteration = f'{model._get_name()}-{input_shape[0]}x{input_shape[1]}-lr1e4-{NB_EPOCH}epoch-{BATCH_SIZE}batch-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples-INDUSTRIALandHIROCHIandUTAH-noiseflipblur'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"{iteration=}")
     print(f"{device=}")
     model = model.to(device)
     # if loss doesnt level out after 20 epochs, either inc epochs or inc learning rate
     optimizer = optim.Adam(model.parameters(), lr=lr) #, betas=(0.9, 0.999), eps=1e-08)
-    for epoch in range(NB_EPOCH):  # loop over the dataset multiple times
+    lowest_loss = 1e5
+    logfreq = 20
+    for epoch in range(NB_EPOCH):
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
             x = hashmap['image'].float().to(device)
@@ -235,20 +237,19 @@ def main_pytorch_model():
             # loss = F.gaussian_nll_loss(outputs, y)
             loss.backward()
             optimizer.step()
-
-            # print statistics
             running_loss += loss.item()
-            logfreq = 20
             if i % logfreq == logfreq-1:  # print every 2000 mini-batches
                 print('[%d, %5d] loss: %.7f' %
                       (epoch + 1, i + 1, running_loss / logfreq))
+                if (running_loss / logfreq) < lowest_loss:
+                    print(f"New best model! MSE loss: {running_loss / logfreq}")
+                    model_name = f"H:/GitHub/DAVE2-Keras/model-fixnoise-{iteration}-best.pt"
+                    print(f"Saving model to {model_name}")
+                    torch.save(model, model_name)
+                    lowest_loss = running_loss / logfreq
                 running_loss = 0.0
-                # from torchvision.utils import save_image
-                # save_image(x, "test_david.png", nrow=8)
-            # if len(running_loss) > 10:
-            #     running_loss[-10:]
         print(f"Finished {epoch=}")
-        model_name = f"H:/GitHub/DAVE2-Keras/model-{iteration}-epoch{epoch}.pt"
+        model_name = f"H:/GitHub/DAVE2-Keras/model-fixnoise-{iteration}-epoch{epoch}.pt"
         print(f"Saving model to {model_name}")
         torch.save(model, model_name)
         # if loss < 0.002:

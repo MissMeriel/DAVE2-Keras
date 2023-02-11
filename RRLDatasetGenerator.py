@@ -37,7 +37,7 @@ def striplastchars(s):
     return -1
 
 class MultiDirectoryDataSequence(data.Dataset):
-    def __init__(self, root, RRL_dir, image_size=(100,100), transform=None,
+    def __init__(self, root, RRL_dir=None, image_size=(100,100), transform=None,
                  robustification=False, noise_level=10, effect=None):
         """
         Args:
@@ -58,7 +58,8 @@ class MultiDirectoryDataSequence(data.Dataset):
         self.dfs_hashmap = {}
         self.dirs = []
         self.process_basemodel_dirs()
-        self.process_RRL_dir()
+        if RRL_dir is not None:
+            self.process_RRL_dir()
         self.cache = {}
 
     def process_basemodel_dirs(self):
@@ -230,7 +231,7 @@ class MultiDirectoryDataSequence(data.Dataset):
         sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
         orig_sample = {"image": orig_image, "steering_input": torch.FloatTensor([orig_y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([orig_y_steer, y_throttle])}
         # if len(self.cache.keys()) < 82000:
-        if sys.getsizeof(self.cache) < 8 * 1.25e10:
+        if sys.getsizeof(self.cache) < 8 * 1.0e10:
             self.cache[idx] = orig_sample
         else:
             print(f"{len(self.cache.keys())=}")

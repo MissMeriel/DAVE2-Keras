@@ -6,3 +6,7 @@ __pycache__\*
 samples_vae/
 *.h5
 .idea/
+checkpoints
+checkpoints136x240
+checkpoints136x240-origdataset
+*.pt

@@ -19,7 +19,9 @@ from matplotlib.pyplot import imshow
 import random
 
 from torchvision.transforms import Compose, ToTensor, PILToTensor, functional as transforms
-
+from wand.image import Image as WandImage
+from io import BytesIO
+import skimage
 
 class DatasetGenerator(keras.utils.Sequence):
     'Generates data for Keras'
@@ -212,7 +214,7 @@ class DatasetGenerator(keras.utils.Sequence):
             img_filename = filename.replace(".jpg", "")
             l = img_filename.split("_")[-1]
             return float(l)
-        elif "training_images_" in filename:
+        elif "training_images_industrial" in filename:
             # img_filename = filename.replace("racetrackstartinggate", "")
             l = filename.split("racetrackstartinggate")[-1]
             return float(l)
@@ -224,7 +226,9 @@ class DatasetGenerator(keras.utils.Sequence):
     def process_all_training_dirs_with_2D_output_and_multi_input(self, m):
         rootdir = 'H:/BeamNG_DAVE2_racetracks_all/PID/'
         dirs = os.listdir(rootdir)
-        dirs = self.sort_dirs(dirs)
+        dirs = [dir for dir in dirs if "training_images_industrial" in dir]
+        dirs = self.sort_dirs(dirs)[:1]
+        print(f"{dirs=}")
         sizes = []
         for d in dirs:
             sizes.append(self.get_dataset_size(rootdir + d))
@@ -245,7 +249,7 @@ class DatasetGenerator(keras.utils.Sequence):
             for index,img in enumerate(td):
                 img_file = "{}/{}".format(trainingdir, img)
                 image = Image.open(img_file)
-                image = m.process_image(np.asarray(image))
+                # image = m.process_image(np.asarray(image))
                 adjusted_index = sum(sizes[:i]) + index
                 # print("adjusted_index", adjusted_index)
                 X_train[adjusted_index] = image.copy()
@@ -513,31 +517,60 @@ class MultiDirectoryDataSequence(data.Dataset):
     def __len__(self):
         return len(self.all_image_paths)
 
+
+    def fisheye(selfself, image):
+        with WandImage.from_array(image) as img:
+            # img.format = 'bmp'
+            img.virtual_pixel = 'transparent'
+            img.distort('barrel', (0.1, 0.0, -0.05, 1.0))
+            img.alpha_channel = False
+        #     img_buffer = np.asarray(bytearray(img.make_blob()), dtype='uint8')
+        # bytesio = BytesIO(img_buffer)
+        # img = skimage.io.imread(bytesio)
+            img = np.array(img, dtype='uint8')
+            # img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            # img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+            # plt.imshow(img)
+            # plt.show()
+            return img.randn
+
     def __getitem__(self, idx):
         if idx in self.cache:
-            return self.cache[idx]
+            if self.robustification:
+                sample = self.cache[idx]
+                y_steer = sample["steering_input"]
+                image = copy.deepcopy(sample["image"])
+                if random.random() > 0.5:
+                    # flip image
+                    image = torch.flip(image, (2,))
+                    y_steer = -sample["steering_input"]
+                if random.random() > 0.5:
+                    # blur
+                    gauss = kornia.filters.GaussianBlur2d((3,3), (1.5, 1.5))
+                    image = gauss(image[None])[0]
+                image = torch.clamp(image + (torch.randn(*image.shape) / self.noise_level), 0, 1)
+                return {"image": image, "steering_input": y_steer, "throttle_input": sample["throttle_input"], "all": torch.FloatTensor([y_steer, sample["throttle_input"]])}
+            else:
+                return self.cache[idx]
         img_name = self.all_image_paths[idx]
         image = Image.open(img_name)
         image = image.resize(self.image_size)
+        # image = cv2.imread(img_name.__str__())
+        # image = cv2.resize(image, self.image_size) / 255
+        # image = self.fisheye(image)
         orig_image = self.transform(image)
         pathobj = Path(img_name)
-        # print(img_name)
         df = self.dfs_hashmap[f"{pathobj.parent}"]
         df_index = df.index[df['filename'] == img_name.name]
         orig_y_steer = df.loc[df_index, 'steering_input'].item()
         y_throttle = df.loc[df_index, 'throttle_input'].item()
         y_steer = copy.deepcopy(orig_y_steer)
         if self.robustification:
-            # add noise
             image = copy.deepcopy(orig_image)
-            image = torch.clamp(image + torch.randn(*image.shape) / self.noise_level, 0, 1)
             if random.random() > 0.5:
                 # flip image
-                # plt.imshow(image.permute(1,2,0))
-                # plt.pause(0.01)
                 image = torch.flip(image, (2,))
-                # plt.imshow(image.permute(1,2,0))
-                # plt.pause(0.01)
                 y_steer = -orig_y_steer
             if random.random() > 0.5:
                 # blur
@@ -552,8 +585,9 @@ class MultiDirectoryDataSequence(data.Dataset):
                 # image = kornia.resize(image, image.shape[2:])
                 # plt.imshow(image.permute(1,2,0))
                 # plt.pause(0.01)
+            image = torch.clamp(image + (torch.randn(*image.shape) / self.noise_level), 0, 1)
+
         else:
-            # if type(image) == Image.Image:
             t = Compose([ToTensor()])
             image = t(image).float()
             # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1

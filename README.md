@@ -8,6 +8,24 @@ python model-from-dataset.py <path/to/dataset/parentdirectory>
 pip3 install torch==1.9.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu111
 ```
 
+## To Run Training on department slurm:
+Use a script similar to:
+```python
+#!/usr/bin/bash
+python train_RRL_baseline.py ../BeamNG_DeepBillboard_dataset2/ ../RLtrainRturn-resinc-max200-0.05eval-1_20-14_55-UA0C42 resize
+```
+
+Schedule slurm job:
+```bash
+sbatch -w jaguar02 -p gpu --gres=gpu:1  --exclusive=user ./run_RRL_train.sh```
+```
+
+To find available nodes:
+```python
+#login to portal
+squeue
+sinfo
+```
 
 ## Goal: 
 The goal of this project was to implement an end-to-end neural network, for behavioral cloning of a simulated car driver. The input to the network are timestamped camera images (left, right , and center mounted).  The output of the network is a single floating point number, representing the steering angle of the car (for simplicity, other car controls e.g. throttle and brake were assumed constants and steering angle was kept in the range of -1 to 1). A Unity engine based driving simulator was used for training and testing the network. This simulator was provided by Udacity as part of the Self Driving Car nanodegree program. In case you want to try it out: [Link to download the linux driving simulator.](https://d17h27t6h515a5.cloudfront.net/topher/2016/November/5831f0f7_simulator-linux/simulator-linux.zip)
