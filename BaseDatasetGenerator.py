@@ -8,7 +8,6 @@ import kornia
 from PIL import Image
 import copy
 from scipy import stats
-# adapted from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 import torch.utils.data as data
 from pathlib import Path
 import skimage.io as sio
@@ -24,7 +23,6 @@ from io import BytesIO
 import skimage
 
 def stripleftchars(s):
-    # print(f"{s=}")
     for i in range(len(s)):
         if s[i].isnumeric():
             return s[i:]
@@ -87,7 +85,8 @@ class DataSequence(data.Dataset):
         return sample
 
 class MultiDirectoryDataSequence(data.Dataset):
-    def __init__(self, root, image_size=(100,100), transform=None, robustification=False, noise_level=10):
+    def __init__(self, root, image_size=(100,100), transform=None, 
+                    robustification=False, noise_level=10):
         """
         Args:
             root_dir (string): Directory with all the images.
@@ -95,16 +94,20 @@ class MultiDirectoryDataSequence(data.Dataset):
                 on a sample.
         """
         self.root = root
-        self.transform = transform
+        if transform is not None:
+            self.transform = transform
+        else:
+            self.transform = Compose([ToTensor()])
         self.size = 0
         self.image_size = image_size
         image_paths_hashmap = {}
         all_image_paths = []
         self.dfs_hashmap = {}
         self.dirs = []
+        
         marker = "_YES"
         for p in Path(root).iterdir():
-            if p.is_dir() and marker in str(p): #"_NO" not in str(p) and "YQWHF3" not in str(p):
+            if p.is_dir() and marker in str(p):
                 self.dirs.append("{}/{}".format(p.parent,p.stem.replace(marker, "")))
                 image_paths = []
                 try:
@@ -160,11 +163,11 @@ class MultiDirectoryDataSequence(data.Dataset):
                 sample = self.cache[idx]
                 y_steer = sample["steering_input"]
                 image = copy.deepcopy(sample["image"])
-                if random.random() > 0.5:
+                if random.random() > 0.1:
                     # flip image
                     image = torch.flip(image, (2,))
                     y_steer = -sample["steering_input"]
-                if random.random() > 0.5:
+                if random.random() > 0.1:
                     # blur
                     gauss = kornia.filters.GaussianBlur2d((3,3), (1.5, 1.5))
                     image = gauss(image[None])[0]
@@ -182,16 +185,17 @@ class MultiDirectoryDataSequence(data.Dataset):
         pathobj = Path(img_name)
         df = self.dfs_hashmap[f"{pathobj.parent}"]
         df_index = df.index[df['filename'] == img_name.name]
+        # print(img_name, df_index, df.loc[df_index, 'steering_input'], flush=True)
         orig_y_steer = df.loc[df_index, 'steering_input'].item()
         y_throttle = df.loc[df_index, 'throttle_input'].item()
         y_steer = copy.deepcopy(orig_y_steer)
         if self.robustification:
             image = copy.deepcopy(orig_image)
-            if random.random() > 0.5:
+            if random.random() > 0.75:
                 # flip image
                 image = torch.flip(image, (2,))
                 y_steer = -orig_y_steer
-            if random.random() > 0.5:
+            if random.random() > 0.75:
                 # blur
                 kernel = int(np.random.choice(np.array([1,3,5])))
                 stdev = np.random.random() * 5.5 # sigma
@@ -209,8 +213,8 @@ class MultiDirectoryDataSequence(data.Dataset):
             image = torch.clamp(image + (torch.randn(*image.shape) / self.noise_level), 0, 1)
 
         else:
-            t = Compose([ToTensor()])
-            image = t(image).float()
+            
+            image = self.transform(image).float()
             # image = torch.from_numpy(image).permute(2,0,1) / 127.5 - 1
 
         # vvvvvv uncomment below for value-image debugging vvvvvv
@@ -221,7 +225,10 @@ class MultiDirectoryDataSequence(data.Dataset):
 
         sample = {"image": image, "steering_input": torch.FloatTensor([y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([y_steer, y_throttle])}
         orig_sample = {"image": orig_image, "steering_input": torch.FloatTensor([orig_y_steer]), "throttle_input": torch.FloatTensor([y_throttle]), "all": torch.FloatTensor([orig_y_steer, y_throttle])}
-        # self.cache[idx] = orig_sample
+        try:
+            self.cache[idx] = orig_sample
+        except MemoryError as e:
+            print(f"Memory error adding sample to cache: {e}", flush=True)
         return sample
 
     def get_outputs_distribution(self):
@@ -229,9 +236,7 @@ class MultiDirectoryDataSequence(data.Dataset):
         for key in self.dfs_hashmap.keys():
             df = self.dfs_hashmap[key]
             arr = df['steering_input'].to_numpy()
-            # print("len(arr)=", len(arr))
             all_outputs = np.concatenate((all_outputs, arr), axis=0)
-            # print(f"Retrieved dataframe {key=}")
         all_outputs = np.array(all_outputs)
         moments = self.get_distribution_moments(all_outputs)
         return moments

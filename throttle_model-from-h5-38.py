@@ -4,27 +4,21 @@ import pandas as pd
 import cv2
 import matplotlib.image as mpimg
 import json
-
-from keras.models import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Dense, Dropout
-from keras.layers import Activation, Flatten, Lambda, Input, ELU
-from keras.optimizers import Adam
-from keras.utils import np_utils
-from keras.preprocessing.image import ImageDataGenerator
 from torch.autograd import Variable
 
-import h5py
+# import h5py
 import os
 from PIL import Image
 import PIL
 import matplotlib.pyplot as plt
 import csv
-from DAVE2 import DAVE2Model
-from DatasetGenerator import DatasetGenerator, DataSequence, MultiDirectoryDataSequence
+# from DAVE2 import DAVE2Model
+from ResNet import ResNet152, ResNet50, ResNet101
+from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3, Epoch
+from BaseDatasetGenerator import MultiDirectoryDataSequence
 import time
 
-from DAVE2pytorch import DAVE2PytorchModel, DAVE2v1, DAVE2v2, DAVE2v3, Epoch
-from VAEbasic import VAEbasic
+# from VAEbasic import VAEbasic
 
 import torch
 import torch.nn as nn
@@ -34,8 +28,24 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 from torchvision.transforms import Compose, ToPILImage, ToTensor, Resize, Lambda, Normalize
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(prog='ProgramName', description='What the program does',
+                                     epilog='Text at the bottom of help')
+    parser.add_argument("-p", '--path_to_trainingdir', type=str, default='/p/autosoft/Meriel/BeamNG_DAVE2_racetracks',
+                        help='path to training data parentdir')
+    parser.add_argument('-n', '--noisevar', type=float, default=20,
+                        help='max noisevar to sample')
+    parser.add_argument('-o', '--outdir_id', type=str, default="out",
+                        help='identifier or slurm job id')
+    args = parser.parse_args()
+    print(args.path_to_trainingdir, args.noisevar, args.outdir_id, flush=True)
+    return args
+
+args = parse_args()
+
 sample_count = 0
-path_to_trainingdir = 'H:/BeamNG_DAVE2_racetracks'
+path_to_trainingdir = args.path_to_trainingdir #'H:/BeamNG_DAVE2_racetracks'
 X = None; X_kph = None; y_all = None; y_steering = None; y_throttle = None
 
 def process_csv(filename):
@@ -58,7 +68,7 @@ def process_training_dir(trainingdir, m):
         img_file = "{}{}".format(trainingdir, img)
         image = cv2.imread(img_file)
         if "bmp" in img_file:
-            print("img_file {}".format(img_file))
+            print("img_file {}".format(img_file), flush=True)
             compression_params = [cv2.IMWRITE_PNG_COMPRESSION, 9]
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             temp = image
@@ -95,8 +105,8 @@ def characterize_steering_distribution(y_steering, generator):
     # turning = [i for i in y_steering if i > 0.1]
     # straight = [i for i in y_steering if i <= 0.1]
     try:
-        print("Moments of abs. val'd turning steering distribution:", generator.get_distribution_moments(turning))
-        print("Moments of abs. val'd straight steering distribution:", generator.get_distribution_moments(straight))
+        print("Moments of abs. val'd turning steering distribution:", generator.get_distribution_moments(turning), flush=True)
+        print("Moments of abs. val'd straight steering distribution:", generator.get_distribution_moments(straight), flush=True)
     except Exception as e:
         print(e)
         print("len(turning)", len(turning))
@@ -174,51 +184,59 @@ def main_multi_input_model():
     print("All done :)")
     print("Time to train: {}".format(time.time() - start_time))
 
-def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', help='parent directory of training dataset')
-    args = parser.parse_args()
-    return args
-
 def main_pytorch_model():
     global sample_count, path_to_trainingdir
     global X, X_kph, y_all, y_steering, y_throttle
+    import time
     start_time = time.time()
     # model = DAVE2v1(input_shape=(135,240))
     # model = VAEbasic(3, 100, input_shape=(135,240))
     # model = DAVE2PytorchModel(input_shape=(225,400))
     # model = DAVE2PytorchModel(input_shape=(67,120))
-    input_shape = (135, 240)
+    input_shape = (135,240)
     model = DAVE2v3(input_shape=input_shape)
+    # model = Epoch(input_shape=input_shape)
+    # model = ResNet152(1)
+    # model = ResNet101(1)
     # print(f"new model:{model}")
     BATCH_SIZE = 64
-    NB_EPOCH = 100
+    NB_EPOCH = 500
     lr = 1e-4
     robustification = True
     noise_level = 15
-    args = parse_arguments()
-    print(args)
-    dataset = MultiDirectoryDataSequence(args.dataset, image_size=(model.input_shape[::-1]), transform=Compose([ToTensor()]),\
+    print(args, flush=True)
+    dataset = MultiDirectoryDataSequence(args.path_to_trainingdir, image_size=(input_shape[::-1]), transform=Compose([ToTensor()]),\
                                          robustification=robustification, noise_level=noise_level) #, Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
 
-    print("Retrieving output distribution....")
-    print("Moments of distribution:", dataset.get_outputs_distribution())
-    print("Total samples:", dataset.get_total_samples())
+    print("Retrieving output distribution....", flush=True)
+    print("Moments of distribution:", dataset.get_outputs_distribution(), flush=True)
+    print("Total samples:", dataset.get_total_samples(), flush=True)
     def worker_init_fn(worker_id):
         np.random.seed(np.random.get_state()[1][0] + worker_id)
 
     trainloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, worker_init_fn=worker_init_fn)
-    print("time to load dataset: {}".format(time.time() - start_time))
-
-    iteration = f'{model._get_name()}-{input_shape[0]}x{input_shape[1]}-lr1e4-{NB_EPOCH}epoch-{BATCH_SIZE}batch-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples-INDUSTRIALandHIROCHIandUTAH-noiseflipblur'
+    newdir = f""
+    import time 
+    localtime = time.localtime()
+    timestr = "{}_{}-{}_{}".format(localtime.tm_mon, localtime.tm_mday, localtime.tm_hour, localtime.tm_min)
+    import random, string, shutil
+    randstr = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    newdir = f"./{model._get_name()}-{NB_EPOCH}epoch-{args.outdir_id}-{timestr}-{randstr}"
+    if not os.path.exists(newdir):
+        # original_umask = os.umask(0)
+        os.mkdir(newdir,  mode=0o777)
+        #shutil.copy(f"{__file__}", newdir)
+        shutil.copyfile(__file__, f"{newdir}/{__file__.split('/')[-1]}", follow_symlinks=False)
+    iteration = f'{model._get_name()}-randomblurnoise-{input_shape[0]}x{input_shape[1]}-lr1e4-{NB_EPOCH}epoch-{BATCH_SIZE}batch-lossMSE-{int(dataset.get_total_samples()/1000)}Ksamples'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"{iteration=}")
-    print(f"{device=}")
+    print(f"{iteration=}", flush=True)
+    print(f"{device=}", flush=True)
     model = model.to(device)
     # if loss doesnt level out after 20 epochs, either inc epochs or inc learning rate
     optimizer = optim.Adam(model.parameters(), lr=lr) #, betas=(0.9, 0.999), eps=1e-08)
     lowest_loss = 1e5
     logfreq = 20
+    best_model_count = 0
     for epoch in range(NB_EPOCH):
         running_loss = 0.0
         for i, hashmap in enumerate(trainloader, 0):
@@ -240,38 +258,39 @@ def main_pytorch_model():
             running_loss += loss.item()
             if i % logfreq == logfreq-1:  # print every 2000 mini-batches
                 print('[%d, %5d] loss: %.7f' %
-                      (epoch + 1, i + 1, running_loss / logfreq))
+                      (epoch + 1, i + 1, running_loss / logfreq), flush=True)
                 if (running_loss / logfreq) < lowest_loss:
-                    print(f"New best model! MSE loss: {running_loss / logfreq}")
-                    model_name = f"H:/GitHub/DAVE2-Keras/model-fixnoise-{iteration}-best.pt"
-                    print(f"Saving model to {model_name}")
+                    print(f"New best model! MSE loss: {running_loss / logfreq}", flush=True)
+                    model_name = f"./{newdir}/model-{iteration}-best{best_model_count:03d}.pt"
+                    print(f"Saving model to {model_name}", flush=True)
                     torch.save(model, model_name)
+                    best_model_count += 1
                     lowest_loss = running_loss / logfreq
                 running_loss = 0.0
-        print(f"Finished {epoch=}")
-        model_name = f"H:/GitHub/DAVE2-Keras/model-fixnoise-{iteration}-epoch{epoch}.pt"
-        print(f"Saving model to {model_name}")
+        print(f"Finished {epoch=}", flush=True)
+        model_name = f"./{newdir}/model-{iteration}-epoch{epoch:03d}.pt"
+        print(f"Saving model to {model_name}", flush=True)
         torch.save(model, model_name)
         # if loss < 0.002:
         #     print(f"Loss at {loss}; quitting training...")
         #     break
-    print('Finished Training')
+    print('Finished Training', flush=True)
 
     # save model
     # torch.save(model.state_dict(), f'H:/GitHub/DAVE2-Keras/test{iteration}-weights.pt')
-    model_name = f'H:/GitHub/DAVE2-Keras/model-{iteration}.pt'
+    model_name = f'./{newdir}/model-{iteration}.pt'
+    #torch.save(model, model_name)
     torch.save(model, model_name)
 
     # delete models from previous epochs
-    print("Deleting models from previous epochs...")
+    print("Deleting models from previous epochs...", flush=True)
     for epoch in range(NB_EPOCH):
-        os.remove(f"H:/GitHub/DAVE2-Keras/model-{iteration}-epoch{epoch}.pt")
-    print(f"Saving model to {model_name}")
-    print("All done :)")
+        os.remove(f"./{newdir}/model-{iteration}-epoch{epoch:03d}.pt")
+    print(f"Saving model to {model_name}", flush=True)
     time_to_train=time.time() - start_time
-    print("Time to train: {}".format(time_to_train))
+    print("Time to train: {}".format(time_to_train), flush=True)
     # save metainformation about training
-    with open(f'H:/GitHub/DAVE2-Keras/model-{iteration}-metainfo.txt', "w") as f:
+    with open(f'./{newdir}/model-{iteration}-metainfo.txt', "w") as f:
         f.write(f"{model_name=}\n"
                 f"total_samples={dataset.get_total_samples()}\n"
                 f"{NB_EPOCH=}\n"
