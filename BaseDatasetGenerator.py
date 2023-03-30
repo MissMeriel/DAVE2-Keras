@@ -228,7 +228,7 @@ class MultiDirectoryDataSequence(data.Dataset):
         try:
             self.cache[idx] = orig_sample
         except MemoryError as e:
-            print(f"Memory error adding sample to cache: {e}", flush=True)
+            print(f"Memory error adding sample to cache: {e}. Sample {img_name} not cached.", flush=True)
         return sample
 
     def get_outputs_distribution(self):
