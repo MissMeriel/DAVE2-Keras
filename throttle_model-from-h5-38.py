@@ -193,7 +193,7 @@ def main_pytorch_model():
     # model = VAEbasic(3, 100, input_shape=(135,240))
     # model = DAVE2PytorchModel(input_shape=(225,400))
     # model = DAVE2PytorchModel(input_shape=(67,120))
-    input_shape = (135,240)
+    input_shape = (81,144)
     model = DAVE2v3(input_shape=input_shape)
     # model = Epoch(input_shape=input_shape)
     # model = ResNet152(1)
