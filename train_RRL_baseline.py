@@ -24,14 +24,17 @@ import cv2
 import matplotlib.image as mpimg
 import json
 import h5py
+import ast
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', help='parent directory of base model dataset', default="H:/BeamNG_DeepBillboard_dataset2")
-    parser.add_argument('RRL_dir', help='parent directory of RRL dataset', default="H:/RRL-results/RLtrain-max200epi-DDPGhuman-0.05evaleps-bigimg-1_19-20_43-IW6ZTT/RLtrain-max200epi-DDPGhuman-0.05evaleps-bigimg-1_19-20_43-IW6ZTT")
-    parser.add_argument('effect', help='image transformation', default="fisheye")
+    parser.add_argument('dataset', help='parent directory of base model dataset', default=None) #default="H:/BeamNG_DeepBillboard_dataset2")
+    parser.add_argument('RRL_dir', help='parent directory of RRL dataset', default=None) #default="H:/RRL-results/RLtrain-max200epi-DDPGhuman-0.05evaleps-bigimg-1_19-20_43-IW6ZTT/RLtrain-max200epi-DDPGhuman-0.05evaleps-bigimg-1_19-20_43-IW6ZTT")
+    parser.add_argument('effect', help='image transformation', default=None)
+    parser.add_argument('-o', '--outdir_id', type=str, default="out", help='identifier or slurm job id')
 
     args = parser.parse_args()
+    print(args)
     return args
 
 def train_baseline_model():

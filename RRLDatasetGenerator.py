@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 import os, cv2, csv
-from DAVE2 import DAVE2Model
+# from DAVE2 import DAVE2Model
 from DAVE2pytorch import DAVE2PytorchModel
 import kornia
 
@@ -19,7 +19,6 @@ from matplotlib.pyplot import imshow
 import random
 
 from torchvision.transforms import Compose, ToTensor, PILToTensor, functional as transforms
-from wand.image import Image as WandImage
 from io import BytesIO
 import skimage
 
@@ -37,7 +36,7 @@ def striplastchars(s):
     return -1
 
 class MultiDirectoryDataSequence(data.Dataset):
-    def __init__(self, root, RRL_dir=None, image_size=(100,100), transform=None,
+    def __init__(self, root=None, RRL_dir=None, image_size=(100,100), transform=None,
                  robustification=False, noise_level=10, effect=None):
         """
         Args:
@@ -57,7 +56,8 @@ class MultiDirectoryDataSequence(data.Dataset):
         self.all_image_paths = []
         self.dfs_hashmap = {}
         self.dirs = []
-        self.process_basemodel_dirs()
+        if self.root is not None:
+            self.process_basemodel_dirs()
         if RRL_dir is not None:
             self.process_RRL_dir()
         self.cache = {}
@@ -116,7 +116,8 @@ class MultiDirectoryDataSequence(data.Dataset):
     def __len__(self):
         return len(self.all_image_paths)
 
-
+    '''
+    from wand.image import Image as WandImage
     def fisheye(self, image):
         with WandImage.from_array(image) as img:
             # img.format = 'bmp'
@@ -150,7 +151,8 @@ class MultiDirectoryDataSequence(data.Dataset):
             # plt.imshow(img)
             # plt.show()
             return img
-
+    '''
+    
     def depth_estimation(self, image):
         pass
 
