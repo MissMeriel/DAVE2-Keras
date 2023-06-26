@@ -260,6 +260,20 @@ class DAVE2v3(nn.Module):
         x = self.lin4(x)
         return x
 
+    def features(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = self.pool2(x)
+        x = self.conv3(x)
+        x = F.relu(x)
+        x = self.pool3(x)
+        x = x.flatten(1)
+        return x
+
+
     def load(self, path="test-model.pt"):
         return torch.load(path)
 
